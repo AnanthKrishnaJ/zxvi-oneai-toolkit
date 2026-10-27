@@ -11,19 +11,4 @@ A single-file, **fully offline** toolkit with **215 tools** – no API keys, no 
 - **Team tool sections** – Soumya, Keerthana, Ananth and Sanjay unique tools (10 each): task planners, quiz/receipt helpers, submission & file-requirement checkers, household stock, group expense splitting, cost-per-wear, refill prediction and more. All rule-based and offline.
 - **Profile** – name, username, bio, emoji / photo avatar, accent colour, export / import backup (stored in the browser)
 
-## Run locally
-Open `index.html` in a browser, or serve the folder: `npx serve .`
 
-## Deploy to Vercel
-1. Import this GitHub repo at <https://vercel.com/new> (Framework preset: **Other**, no build command, output directory = root).
-2. Or from a terminal: `npm i -g vercel && vercel --prod`.
-
-## Project layout
-| File | Purpose |
-|---|---|
-| `index.html` | The whole app (HTML + CSS + JS) |
-| `vercel.json` | Static hosting settings |
-
-## Known limits
-- Photo scanning is template-matching OCR: clean, straight, printed grids work best; tiny thin text, heavy skew (>10°) or curved photos may need the manual edit step.
-- Printing from some embedded previews can be blocked by the browser – open the page directly.
