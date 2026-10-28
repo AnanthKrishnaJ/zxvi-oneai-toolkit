@@ -2647,7 +2647,7 @@ skill('timer','Timers',['set a timer for 5 minutes','timer 90 seconds'],q=>{let 
 
 const VIEWALIAS={dashboard:'',home:'','all tools':'tools',tools:'tools',library:'tools',ocr:'ocr','image to text':'ocr','qr tools':'qr-tools','qr hub':'qr-tools','qr and barcodes':'qr-tools',settings:'ai-settings','assistant settings':'ai-settings'};
 skill('open','Open a tool',['open json formatter','open stopwatch'],q=>{let m;if(!(m=q.match(/^(?:open|launch|start|go to|goto|show me|show|take me to|run|use)\s+(?:the |a |an |my )?(.+?)(?: tool| page| app)?\s*$/)))return null;
-  const k=m[1];if(k in VIEWALIAS)return R('Opening '+(k||'dashboard')+'.',{go:VIEWALIAS[k]});const ts=findTools(k,3);if(!ts.length)return R('I couldn\'t find a tool called “'+k+'”. Try “open calculator” or browse All tools.',{acts:[{label:'All tools',go:'tools'}]});
+  const k=m[1];if(k in VIEWALIAS)return R('Opening '+(k||'dashboard')+'.',{go:VIEWALIAS[k]});const ts=(hooks.find||findTools)(k,3);if(!ts.length)return R('I couldn\'t find a tool called “'+k+'”. Try “open calculator” or browse All tools.',{acts:[{label:'All tools',go:'tools'}]});
   return R('Opening **'+ts[0].name+'**.',{go:ts[0].id,acts:toolActs(ts.slice(1)).map(a=>({...a,label:a.label.replace('Open','Or')}))})});
 
 skill('percent','Percentages and tax',['18% of 2500','45 out of 60','20% off 1500','18% gst on 1000'],q=>{let m;const x=s=>amount(s);
@@ -2803,8 +2803,10 @@ skill('define','Explain a term',['what is machine learning','define recursion'],
 async function ask(raw){raw=String(raw).trim();const q=N(raw).replace(/^(?:hey |hi |ok |okay )?(?:zxvi|bot)[,:]?\s+/,'').replace(/^(?:please|pls|plz|can you|could you|would you|will you|kindly)\s+/,'').replace(/^(?:tell me|show me|give me)\s+(?=(?:the )?(?:time|date|a joke|a quote|a fact|a riddle|fun fact))/,'').replace(/\s+please$/,'').replace(/([a-z?.])!+$/,'$1');
   if(!q)return R('Type something and I\'ll do my best.');
   for(const s of S){let r;try{r=await s.fn(q,raw)}catch(e){console.warn('skill',s.id,e);r=null}if(r){r.skill=s.title;return r}}
+  const q2=q.replace(/^(?:find|search for|look up|lookup|get|name|give me|tell me|show me|i want to know|i wanna know|do you know)(?: me)?\s+(?:about\s+)?(?:the\s+)?/,'');
+  if(q2!==q&&q2.length>2)for(const s of S){let r;try{r=await s.fn(q2,raw)}catch(e){r=null}if(r){r.skill=s.title;return r}}
   for(const h of hooks.pre){let r=null;try{r=await h(q,raw)}catch(e){console.warn('hook',e)}if(r){return r}}
-  const ts=findTools(q,3);if(ts.length)return R('I\'m not sure how to answer that directly, but these tools look like a match:',{acts:toolActs(ts),skill:'Tool finder',mood:'think'});
+  const ts=(hooks.find||findTools)(q,3);if(ts.length)return R('I\'m not sure how to answer that directly, but these tools look like a match:',{acts:toolActs(ts),skill:'Tool finder',mood:'think'});
   for(const h of hooks.post){let r=null;try{r=await h(q,raw)}catch(e){console.warn('hook',e)}if(r){return r}}
   const near=hooks.near?hooks.near(q):[];const web='https://www.google.com/search?q='+encodeURIComponent(raw);
   return R(pick(['Hmm, I couldn\'t find that in my notes.','I don\'t know that one yet.','That\'s a tricky one for me.'])+(near.length?' Did you mean one of these?\n\n'+near.map(n=>'- '+n).join('\n')+'\n\n':' ')+'I\'m a small offline assistant, so I only know what is built in. I can calculate, convert, explain hundreds of terms, answer geography, science and general-knowledge questions, translate common phrases, write letter templates and help with code snippets. Try one of these:\n\n- `capital of Japan`\n- `translate thank you to malayalam`\n- `write a leave application`\n- `how to reverse a string in python`\n- `18% of 2500` or `10 km to miles`\n\nType **help** for everything.',{skill:'Fallback',mood:'sad',acts:[{label:'Search the web for this',fn:()=>window.open(web,'_blank','noopener')},...(ai_odd?[]:[])]})}
@@ -6686,6 +6688,130 @@ custom('pdf-translator','PDF Translator',PCAT,'Translate a PDF into the language
   return()=>{cancel=true;doc&&doc.destroy&&doc.destroy()}},
 {kw:'translate pdf document translation pdf translator change language of pdf hindi malayalam tamil spanish french german arabic chinese japanese on device translation bilingual pdf'});
 </script>
+<script>
+/* ================= Interface languages. Column order: en hi ml ta te kn bn mr gu pa ur es fr de ar zh ja ko pt ru ================= */
+const I18N=(()=>{
+const LANGS=[
+ {c:'en',n:'English',e:'English',v:'en-IN'},{c:'hi',n:'हिन्दी',e:'Hindi',v:'hi-IN'},{c:'ml',n:'മലയാളം',e:'Malayalam',v:'ml-IN'},{c:'ta',n:'தமிழ்',e:'Tamil',v:'ta-IN'},{c:'te',n:'తెలుగు',e:'Telugu',v:'te-IN'},
+ {c:'kn',n:'ಕನ್ನಡ',e:'Kannada',v:'kn-IN'},{c:'bn',n:'বাংলা',e:'Bengali',v:'bn-IN'},{c:'mr',n:'मराठी',e:'Marathi',v:'mr-IN'},{c:'gu',n:'ગુજરાતી',e:'Gujarati',v:'gu-IN'},{c:'pa',n:'ਪੰਜਾਬੀ',e:'Punjabi',v:'pa-IN'},
+ {c:'ur',n:'اردو',e:'Urdu',v:'ur-PK',rtl:1},{c:'es',n:'Español',e:'Spanish',v:'es-ES'},{c:'fr',n:'Français',e:'French',v:'fr-FR'},{c:'de',n:'Deutsch',e:'German',v:'de-DE'},{c:'ar',n:'العربية',e:'Arabic',v:'ar-SA',rtl:1},
+ {c:'zh',n:'中文（简体）',e:'Chinese (Simplified)',v:'zh-CN'},{c:'ja',n:'日本語',e:'Japanese',v:'ja-JP'},{c:'ko',n:'한국어',e:'Korean',v:'ko-KR'},{c:'pt',n:'Português',e:'Portuguese',v:'pt-BR'},{c:'ru',n:'Русский',e:'Russian',v:'ru-RU'}];
+const ORDER=LANGS.map(l=>l.c);
+const ROWS=[
+'home|Home|होम|ഹോം|முகப்பு|హోమ్|ಮುಖಪುಟ|হোম|मुख्यपृष्ठ|હોમ|ਹੋਮ|ہوم|Inicio|Accueil|Start|الرئيسية|首页|ホーム|홈|Início|Главная',
+'tools|All tools|सभी टूल|എല്ലാ ടൂളുകളും|அனைத்து கருவிகள்|అన్ని టూల్స్|ಎಲ್ಲಾ ಸಾಧನಗಳು|সব টুল|सर्व टूल्स|બધા ટૂલ્સ|ਸਾਰੇ ਟੂਲ|تمام ٹولز|Todas las herramientas|Tous les outils|Alle Tools|كل الأدوات|全部工具|すべてのツール|모든 도구|Todas as ferramentas|Все инструменты',
+'assistant|AI assistant|एआई सहायक|എഐ സഹായി|AI உதவியாளர்|AI సహాయకుడు|AI ಸಹಾಯಕ|এআই সহকারী|एआय सहाय्यक|AI સહાયક|AI ਸਹਾਇਕ|اے آئی اسسٹنٹ|Asistente de IA|Assistant IA|KI-Assistent|مساعد الذكاء الاصطناعي|AI 助手|AIアシスタント|AI 도우미|Assistente de IA|ИИ-помощник',
+'qr|QR and barcodes|QR और बारकोड|QR, ബാർകോഡ്|QR மற்றும் பார்கோடு|QR మరియు బార్‌కోడ్|QR ಮತ್ತು ಬಾರ್‌ಕೋಡ್|QR ও বারকোড|QR आणि बारकोड|QR અને બારકોડ|QR ਅਤੇ ਬਾਰਕੋਡ|کیو آر اور بار کوڈ|QR y códigos de barras|QR et codes-barres|QR und Barcodes|رمز QR والباركود|二维码和条形码|QRとバーコード|QR 및 바코드|QR e códigos de barras|QR и штрихкоды',
+'settings|Settings|सेटिंग्स|ക്രമീകരണങ്ങൾ|அமைப்புகள்|సెట్టింగ్‌లు|ಸೆಟ್ಟಿಂಗ್‌ಗಳು|সেটিংস|सेटिंग्ज|સેટિંગ્સ|ਸੈਟਿੰਗਾਂ|سیٹنگز|Ajustes|Réglages|Einstellungen|الإعدادات|设置|設定|설정|Configurações|Настройки',
+'gm|Good morning|सुप्रभात|ശുഭ പ്രഭാതം|காலை வணக்கம்|శుభోదయం|ಶುಭೋದಯ|সুপ্রভাত|शुभ प्रभात|સુપ્રભાત|ਸ਼ੁਭ ਸਵੇਰ|صبح بخیر|Buenos días|Bonjour|Guten Morgen|صباح الخير|早上好|おはようございます|좋은 아침입니다|Bom dia|Доброе утро',
+'ga|Good afternoon|शुभ दोपहर|ശുഭ ഉച്ച|மதிய வணக்கம்|శుభ మధ్యాహ్నం|ಶುಭ ಮಧ್ಯಾಹ್ನ|শুভ অপরাহ্ন|शुभ दुपार|શુભ બપોર|ਸ਼ੁਭ ਦੁਪਹਿਰ|دوپہر بخیر|Buenas tardes|Bon après-midi|Guten Tag|نهارك سعيد|下午好|こんにちは|좋은 오후입니다|Boa tarde|Добрый день',
+'ge|Good evening|शुभ संध्या|ശുഭ സായാഹ്നം|மாலை வணக்கம்|శుభ సాయంత్రం|ಶುಭ ಸಂಜೆ|শুভ সন্ধ্যা|शुभ संध्याकाळ|શુભ સાંજ|ਸ਼ੁਭ ਸ਼ਾਮ|شام بخیر|Buenas noches|Bonsoir|Guten Abend|مساء الخير|晚上好|こんばんは|좋은 저녁입니다|Boa noite|Добрый вечер',
+'gh|Hello|नमस्ते|ഹലോ|வணக்கம்|నమస్కారం|ನಮಸ್ಕಾರ|নমস্কার|नमस्कार|નમસ્તે|ਸਤ ਸ੍ਰੀ ਅਕਾਲ|ہیلو|Hola|Bonjour|Hallo|مرحبًا|你好|こんにちは|안녕하세요|Olá|Привет',
+'hello|Hello, {n}|नमस्ते, {n}|ഹലോ, {n}|வணக்கம், {n}|నమస్కారం, {n}|ನಮಸ್ಕಾರ, {n}|হ্যালো, {n}|नमस्कार, {n}|નમસ્તે, {n}|ਸਤ ਸ੍ਰੀ ਅਕਾਲ, {n}|ہیلو، {n}|Hola, {n}|Bonjour, {n}|Hallo, {n}|مرحبًا، {n}|你好，{n}|こんにちは、{n}さん|안녕하세요, {n}님|Olá, {n}|Привет, {n}',
+'there|there|दोस्त|കൂട്ടുകാരാ|நண்பரே|మిత్రమా|ಸ್ನೇಹಿತ|বন্ধু|मित्रा|મિત્ર|ਦੋਸਤ|دوست|amigo|ami|Freund|صديقي|朋友|友だち|친구|amigo|друг',
+'describe|Describe what you need|आपको क्या चाहिए, बताइए|നിങ്ങൾക്ക് എന്താണ് വേണ്ടതെന്ന് വിവരിക്കുക|உங்களுக்கு என்ன வேண்டும் என்று கூறுங்கள்|మీకు ఏం కావాలో చెప్పండి|ನಿಮಗೆ ಏನು ಬೇಕು ಎಂದು ವಿವರಿಸಿ|আপনার কী দরকার তা লিখুন|तुम्हाला काय हवे ते सांगा|તમને શું જોઈએ તે જણાવો|ਦੱਸੋ ਤੁਹਾਨੂੰ ਕੀ ਚਾਹੀਦਾ ਹੈ|بتائیں آپ کو کیا چاہیے|Describe lo que necesitas|Décrivez ce qu\'il vous faut|Beschreibe, was du brauchst|صف ما تحتاجه|描述你的需求|必要なことを入力|필요한 것을 설명하세요|Descreva o que você precisa|Опишите, что вам нужно',
+'popular|Popular tools|लोकप्रिय टूल|ജനപ്രിയ ടൂളുകൾ|பிரபலமான கருவிகள்|ప్రసిద్ధ టూల్స్|ಜನಪ್ರಿಯ ಸಾಧನಗಳು|জনপ্রিয় টুল|लोकप्रिय टूल्स|લોકપ્રિય ટૂલ્સ|ਪ੍ਰਸਿੱਧ ਟੂਲ|مقبول ٹولز|Herramientas populares|Outils populaires|Beliebte Tools|أدوات شائعة|热门工具|人気のツール|인기 도구|Ferramentas populares|Популярные инструменты',
+'yourfavs|Your favorites|आपके पसंदीदा|നിങ്ങളുടെ പ്രിയപ്പെട്ടവ|உங்கள் பிடித்தவை|మీ ఇష్టమైనవి|ನಿಮ್ಮ ಮೆಚ್ಚಿನವು|আপনার পছন্দের|तुमचे आवडते|તમારા મનપસંદ|ਤੁਹਾਡੇ ਪਸੰਦੀਦਾ|آپ کے پسندیدہ|Tus favoritos|Vos favoris|Deine Favoriten|المفضلة لديك|你的收藏|お気に入り|즐겨찾기|Seus favoritos|Ваше избранное',
+'seeall|See all {n}|सभी {n} देखें|{n} എണ്ണവും കാണുക|அனைத்து {n} ஐயும் காண்க|మొత్తం {n} చూడండి|ಎಲ್ಲಾ {n} ನೋಡಿ|সব {n}টি দেখুন|सर्व {n} पहा|બધા {n} જુઓ|ਸਾਰੇ {n} ਵੇਖੋ|تمام {n} دیکھیں|Ver los {n}|Voir les {n}|Alle {n} ansehen|عرض الكل ({n})|查看全部 {n} 个|{n}件すべて表示|전체 {n}개 보기|Ver todos os {n}|Показать все ({n})',
+'pdftools|PDF tools|PDF टूल|PDF ടൂളുകൾ|PDF கருவிகள்|PDF టూల్స్|PDF ಸಾಧನಗಳು|PDF টুল|PDF टूल्स|PDF ટૂલ્સ|PDF ਟੂਲ|PDF ٹولز|Herramientas PDF|Outils PDF|PDF-Tools|أدوات PDF|PDF 工具|PDFツール|PDF 도구|Ferramentas de PDF|Инструменты PDF',
+'browse|Browse by category|श्रेणी के अनुसार देखें|വിഭാഗം അനുസരിച്ച് തിരയുക|வகைப்படி உலாவுக|వర్గం వారీగా చూడండి|ವರ್ಗದ ಪ್ರಕಾರ ನೋಡಿ|বিভাগ অনুযায়ী দেখুন|श्रेणीनुसार पहा|શ્રેણી મુજબ જુઓ|ਸ਼੍ਰੇਣੀ ਅਨੁਸਾਰ ਵੇਖੋ|زمرے کے مطابق دیکھیں|Explorar por categoría|Parcourir par catégorie|Nach Kategorie stöbern|تصفح حسب الفئة|按类别浏览|カテゴリで探す|카테고리별로 보기|Explorar por categoria|Обзор по категориям',
+'more|More|और|കൂടുതൽ|மேலும்|మరిన్ని|ಇನ್ನಷ್ಟು|আরও|आणखी|વધુ|ਹੋਰ|مزید|Más|Plus|Mehr|المزيد|更多|もっと見る|더 보기|Mais|Ещё',
+'imgtext|Image to text|इमेज से टेक्स्ट|ചിത്രത്തിൽ നിന്ന് ടെക്സ്റ്റ്|படத்திலிருந்து உரை|ఇమేజ్ నుండి టెక్స్ట్|ಚಿತ್ರದಿಂದ ಪಠ್ಯ|ছবি থেকে লেখা|प्रतिमेतून मजकूर|ઇમેજમાંથી ટેક્સ્ટ|ਤਸਵੀਰ ਤੋਂ ਟੈਕਸਟ|تصویر سے متن|Imagen a texto|Image en texte|Bild zu Text|صورة إلى نص|图片转文字|画像からテキスト|이미지에서 텍스트|Imagem para texto|Изображение в текст',
+'imgtextsub|Read text from photos and screenshots|फोटो और स्क्रीनशॉट से टेक्स्ट पढ़ें|ഫോട്ടോകളിൽ നിന്നും സ്ക്രീൻഷോട്ടുകളിൽ നിന്നും ടെക്സ്റ്റ് വായിക്കുക|புகைப்படங்கள், ஸ்கிரீன்ஷாட்களிலிருந்து உரையைப் படிக்கவும்|ఫోటోలు, స్క్రీన్‌షాట్‌ల నుండి టెక్స్ట్ చదవండి|ಫೋಟೋ ಮತ್ತು ಸ್ಕ್ರೀನ್‌ಶಾಟ್‌ಗಳಿಂದ ಪಠ್ಯ ಓದಿ|ছবি ও স্ক্রিনশট থেকে লেখা পড়ুন|फोटो आणि स्क्रीनशॉटमधून मजकूर वाचा|ફોટા અને સ્ક્રીનશૉટમાંથી ટેક્સ્ટ વાંચો|ਫੋਟੋਆਂ ਅਤੇ ਸਕ੍ਰੀਨਸ਼ਾਟ ਤੋਂ ਟੈਕਸਟ ਪੜ੍ਹੋ|تصاویر اور اسکرین شاٹس سے متن پڑھیں|Lee texto de fotos y capturas|Lisez le texte des photos et captures d\'écran|Text aus Fotos und Screenshots lesen|اقرأ النص من الصور ولقطات الشاشة|从照片和截图中读取文字|写真やスクリーンショットから文字を読み取る|사진과 스크린샷에서 글자 읽기|Leia texto de fotos e capturas de tela|Чтение текста с фото и скриншотов',
+'qrsub|Create, scan and download|बनाएं, स्कैन करें और डाउनलोड करें|സൃഷ്ടിക്കുക, സ്കാൻ ചെയ്യുക, ഡൗൺലോഡ് ചെയ്യുക|உருவாக்கு, ஸ்கேன் செய், பதிவிறக்கு|సృష్టించండి, స్కాన్ చేయండి, డౌన్‌లోడ్ చేయండి|ರಚಿಸಿ, ಸ್ಕ್ಯಾನ್ ಮಾಡಿ, ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ|তৈরি, স্ক্যান ও ডাউনলোড করুন|तयार करा, स्कॅन करा, डाउनलोड करा|બનાવો, સ્કેન કરો, ડાઉનલોડ કરો|ਬਣਾਓ, ਸਕੈਨ ਕਰੋ, ਡਾਊਨਲੋਡ ਕਰੋ|بنائیں، اسکین کریں اور ڈاؤن لوڈ کریں|Crea, escanea y descarga|Créez, scannez et téléchargez|Erstellen, scannen und herunterladen|أنشئ وامسح ونزّل|创建、扫描和下载|作成・スキャン・ダウンロード|만들고, 스캔하고, 다운로드|Crie, escaneie e baixe|Создавайте, сканируйте и скачивайте',
+'askz|Ask {bot} Core|{bot} Core से पूछें|{bot} Core-നോട് ചോദിക്കുക|{bot} Core-இடம் கேளுங்கள்|{bot} Core ని అడగండి|{bot} Core ಅನ್ನು ಕೇಳಿ|{bot} Core-কে জিজ্ঞাসা করুন|{bot} Core ला विचारा|{bot} Core ને પૂછો|{bot} Core ਨੂੰ ਪੁੱਛੋ|{bot} Core سے پوچھیں|Pregunta a {bot} Core|Demandez à {bot} Core|Frag {bot} Core|اسأل {bot} Core|问问 {bot} Core|{bot} Coreに質問|{bot} Core에게 묻기|Pergunte ao {bot} Core|Спросите {bot} Core',
+'askzsub|Math, converting, dates and more, offline|गणित, बदलाव, तारीख़ें और बहुत कुछ, ऑफ़लाइन|ഗണിതം, പരിവർത്തനം, തീയതികൾ തുടങ്ങിയവ, ഓഫ്‌ലൈനായി|கணிதம், மாற்றம், தேதிகள் மற்றும் பல, ஆஃப்லைனில்|గణితం, మార్పిడి, తేదీలు మరియు మరిన్ని, ఆఫ్‌లైన్‌లో|ಗಣಿತ, ಪರಿವರ್ತನೆ, ದಿನಾಂಕಗಳು ಮತ್ತು ಇನ್ನಷ್ಟು, ಆಫ್‌ಲೈನ್|গণিত, রূপান্তর, তারিখ এবং আরও, অফলাইনে|गणित, रूपांतर, तारखा आणि बरेच काही, ऑफलाइन|ગણિત, રૂપાંતર, તારીખો અને વધુ, ઑફલાઇન|ਗਣਿਤ, ਬਦਲਾਅ, ਤਾਰੀਖਾਂ ਅਤੇ ਹੋਰ, ਆਫ਼ਲਾਈਨ|حساب، تبدیلی، تاریخیں اور بہت کچھ، آف لائن|Cálculos, conversiones, fechas y más, sin conexión|Calculs, conversions, dates et plus, hors ligne|Rechnen, Umrechnen, Daten und mehr, offline|حساب وتحويل وتواريخ وأكثر، دون إنترنت|计算、换算、日期等，离线可用|計算・変換・日付など、オフラインで|계산, 변환, 날짜 등 오프라인으로|Cálculos, conversões, datas e mais, offline|Расчёты, конвертация, даты и не только — офлайн',
+'all|All|सभी|എല്ലാം|அனைத்தும்|అన్నీ|ಎಲ್ಲಾ|সব|सर्व|બધા|ਸਾਰੇ|سب|Todo|Tout|Alle|الكل|全部|すべて|전체|Tudo|Все',
+'favorites|Favorites|पसंदीदा|പ്രിയപ്പെട്ടവ|பிடித்தவை|ఇష్టమైనవి|ಮೆಚ್ಚಿನವು|পছন্দের|आवडते|મનપસંદ|ਪਸੰਦੀਦਾ|پسندیدہ|Favoritos|Favoris|Favoriten|المفضلة|收藏|お気に入り|즐겨찾기|Favoritos|Избранное',
+'nofavs|No favorites yet. Tap the heart on any tool.|अभी कोई पसंदीदा नहीं। किसी भी टूल पर दिल दबाएं।|പ്രിയപ്പെട്ടവയൊന്നും ഇല്ല. ഏതെങ്കിലും ടൂളിലെ ഹൃദയത്തിൽ തൊടുക.|பிடித்தவை இல்லை. எந்த கருவியிலும் இதயத்தைத் தட்டுங்கள்.|ఇష్టమైనవి ఇంకా లేవు. ఏదైనా టూల్‌పై హృదయాన్ని నొక్కండి.|ಮೆಚ್ಚಿನವು ಇನ್ನೂ ಇಲ್ಲ. ಯಾವುದೇ ಸಾಧನದ ಹೃದಯವನ್ನು ಒತ್ತಿ.|এখনও কোনো পছন্দের নেই। যেকোনো টুলে হৃদয়ে ট্যাপ করুন।|अजून आवडते नाहीत. कोणत्याही टूलवरील हृदयावर टॅप करा.|હજી કોઈ મનપસંદ નથી. કોઈપણ ટૂલ પરના હૃદય પર ટૅપ કરો.|ਅਜੇ ਕੋਈ ਪਸੰਦੀਦਾ ਨਹੀਂ। ਕਿਸੇ ਵੀ ਟੂਲ ਦੇ ਦਿਲ \'ਤੇ ਟੈਪ ਕਰੋ।|ابھی کوئی پسندیدہ نہیں۔ کسی بھی ٹول پر دل کو دبائیں۔|Aún no hay favoritos. Toca el corazón en cualquier herramienta.|Pas encore de favoris. Touchez le cœur sur un outil.|Noch keine Favoriten. Tippe bei einem Tool auf das Herz.|لا توجد مفضلات بعد. اضغط على القلب في أي أداة.|还没有收藏。点击任意工具上的爱心。|まだお気に入りはありません。ツールのハートをタップしてください。|아직 즐겨찾기가 없습니다. 도구의 하트를 눌러 보세요.|Ainda sem favoritos. Toque no coração em qualquer ferramenta.|Пока нет избранного. Нажмите на сердечко у любого инструмента.',
+'library|Library|लाइब्रेरी|ലൈബ്രറി|நூலகம்|లైబ్రరీ|ಲೈಬ್ರರಿ|লাইব্রেরি|लायब्ररी|લાઇબ્રેરી|ਲਾਇਬ੍ਰੇਰੀ|لائبریری|Biblioteca|Bibliothèque|Bibliothek|المكتبة|工具库|ライブラリ|라이브러리|Biblioteca|Библиотека',
+'toolsub|{n} tools that run in your browser. Tap one to open it.|{n} टूल जो आपके ब्राउज़र में चलते हैं। खोलने के लिए किसी पर टैप करें।|നിങ്ങളുടെ ബ്രൗസറിൽ പ്രവർത്തിക്കുന്ന {n} ടൂളുകൾ. തുറക്കാൻ ഒന്നിൽ തൊടുക.|உங்கள் உலாவியில் இயங்கும் {n} கருவிகள். திறக்க ஒன்றைத் தட்டுங்கள்.|మీ బ్రౌజర్‌లో పనిచేసే {n} టూల్స్. తెరవడానికి ఒకదాన్ని నొక్కండి.|ನಿಮ್ಮ ಬ್ರೌಸರ್‌ನಲ್ಲಿ ಚಲಿಸುವ {n} ಸಾಧನಗಳು. ತೆರೆಯಲು ಒಂದನ್ನು ಒತ್ತಿ.|আপনার ব্রাউজারে চলে এমন {n}টি টুল। খুলতে একটিতে ট্যাপ করুন।|तुमच्या ब्राउझरमध्ये चालणारी {n} टूल्स. उघडण्यासाठी एकावर टॅप करा.|તમારા બ્રાઉઝરમાં ચાલતા {n} ટૂલ્સ. ખોલવા માટે એક પર ટૅપ કરો.|ਤੁਹਾਡੇ ਬ੍ਰਾਊਜ਼ਰ ਵਿੱਚ ਚੱਲਣ ਵਾਲੇ {n} ਟੂਲ। ਖੋਲ੍ਹਣ ਲਈ ਇੱਕ \'ਤੇ ਟੈਪ ਕਰੋ।|آپ کے براؤزر میں چلنے والے {n} ٹولز۔ کھولنے کے لیے کسی پر ٹیپ کریں۔|{n} herramientas que funcionan en tu navegador. Toca una para abrirla.|{n} outils qui fonctionnent dans votre navigateur. Touchez-en un pour l\'ouvrir.|{n} Tools, die in deinem Browser laufen. Tippe eines an, um es zu öffnen.|{n} أداة تعمل في متصفحك. اضغط على أي منها لفتحها.|{n} 个在浏览器中运行的工具。点击即可打开。|ブラウザで動く{n}個のツール。タップして開きます。|브라우저에서 실행되는 도구 {n}개. 눌러서 열어 보세요.|{n} ferramentas que funcionam no seu navegador. Toque em uma para abrir.|{n} инструментов работают прямо в браузере. Нажмите, чтобы открыть.',
+'everything|Everything|सब कुछ|എല്ലാം|அனைத்தும்|అంతా|ಎಲ್ಲವೂ|সবকিছু|सर्वकाही|બધું|ਸਭ ਕੁਝ|سب کچھ|Todo|Tout|Alles|كل شيء|全部|すべて|모든 것|Tudo|Всё',
+'results|Results|परिणाम|ഫലങ്ങൾ|முடிவுகள்|ఫలితాలు|ಫಲಿತಾಂಶಗಳು|ফলাফল|निकाल|પરિણામો|ਨਤੀਜੇ|نتائج|Resultados|Résultats|Ergebnisse|النتائج|结果|結果|결과|Resultados|Результаты',
+'coresub|Offline · built from scratch · no API|ऑफ़लाइन · शुरू से बनाया गया · कोई API नहीं|ഓഫ്‌ലൈൻ · ആദ്യം മുതൽ നിർമ്മിച്ചത് · API ഇല്ല|ஆஃப்லைன் · முதலிலிருந்து உருவாக்கப்பட்டது · API இல்லை|ఆఫ్‌లైన్ · మొదటి నుండి నిర్మించబడింది · API లేదు|ಆಫ್‌ಲೈನ್ · ಮೊದಲಿನಿಂದ ನಿರ್ಮಿತ · API ಇಲ್ಲ|অফলাইন · শুরু থেকে তৈরি · কোনো API নেই|ऑफलाइन · सुरुवातीपासून बनवलेले · API नाही|ઑફલાઇન · શરૂઆતથી બનાવેલ · API નથી|ਆਫ਼ਲਾਈਨ · ਸ਼ੁਰੂ ਤੋਂ ਬਣਾਇਆ · ਕੋਈ API ਨਹੀਂ|آف لائن · شروع سے بنایا گیا · کوئی API نہیں|Sin conexión · hecho desde cero · sin API|Hors ligne · créé de zéro · sans API|Offline · von Grund auf gebaut · ohne API|دون إنترنت · مبني من الصفر · بلا API|离线 · 从零构建 · 无需 API|オフライン・ゼロから開発・API不要|오프라인 · 처음부터 제작 · API 없음|Offline · feito do zero · sem API|Офлайн · написан с нуля · без API',
+'askph|Ask anything, like “15% of 3200” or “capital of Japan”|कुछ भी पूछें, जैसे “15% of 3200” या “capital of Japan”|എന്തും ചോദിക്കൂ, ഉദാ: “15% of 3200” അല്ലെങ്കിൽ “capital of Japan”|எதையும் கேளுங்கள், எ.கா. “15% of 3200” அல்லது “capital of Japan”|ఏదైనా అడగండి, ఉదా: “15% of 3200” లేదా “capital of Japan”|ಏನಾದರೂ ಕೇಳಿ, ಉದಾ: “15% of 3200” ಅಥವಾ “capital of Japan”|যেকোনো কিছু জিজ্ঞাসা করুন, যেমন “15% of 3200” বা “capital of Japan”|काहीही विचारा, उदा. “15% of 3200” किंवा “capital of Japan”|કંઈપણ પૂછો, જેમ કે “15% of 3200” અથવા “capital of Japan”|ਕੁਝ ਵੀ ਪੁੱਛੋ, ਜਿਵੇਂ “15% of 3200” ਜਾਂ “capital of Japan”|کچھ بھی پوچھیں، جیسے “15% of 3200” یا “capital of Japan”|Pregunta lo que quieras, como “15% of 3200” o “capital of Japan”|Posez une question, comme “15% of 3200” ou “capital of Japan”|Frag irgendwas, z. B. “15% of 3200” oder “capital of Japan”|اسأل أي شيء، مثل “15% of 3200” أو “capital of Japan”|随便问，例如 “15% of 3200” 或 “capital of Japan”|何でも聞いてください。例: “15% of 3200”、“capital of Japan”|무엇이든 물어보세요. 예: “15% of 3200”, “capital of Japan”|Pergunte qualquer coisa, como “15% of 3200” ou “capital of Japan”|Спросите что угодно, например “15% of 3200” или “capital of Japan”',
+'send|Send|भेजें|അയയ്ക്കുക|அனுப்பு|పంపండి|ಕಳುಹಿಸಿ|পাঠান|पाठवा|મોકલો|ਭੇਜੋ|بھیجیں|Enviar|Envoyer|Senden|إرسال|发送|送信|보내기|Enviar|Отправить',
+'newchat|New chat|नई चैट|പുതിയ ചാറ്റ്|புதிய அரட்டை|కొత్త చాట్|ಹೊಸ ಚಾಟ್|নতুন চ্যাট|नवीन चॅट|નવી ચેટ|ਨਵੀਂ ਚੈਟ|نئی چیٹ|Nuevo chat|Nouveau chat|Neuer Chat|محادثة جديدة|新对话|新しいチャット|새 채팅|Novo chat|Новый чат',
+'speakreplies|Speak replies aloud|जवाब बोलकर सुनाएं|മറുപടികൾ ഉറക്കെ പറയുക|பதில்களை உரக்கச் சொல்லு|సమాధానాలను గట్టిగా చదవండి|ಉತ್ತರಗಳನ್ನು ಗಟ್ಟಿಯಾಗಿ ಹೇಳಿ|উত্তর জোরে বলুন|उत्तरे मोठ्याने बोला|જવાબો મોટેથી બોલો|ਜਵਾਬ ਬੋਲ ਕੇ ਸੁਣਾਓ|جوابات بلند آواز میں سنائیں|Leer las respuestas en voz alta|Lire les réponses à voix haute|Antworten vorlesen|قراءة الردود بصوت عالٍ|朗读回复|返信を読み上げる|답변을 소리 내어 읽기|Ler as respostas em voz alta|Озвучивать ответы',
+'listen|Read the last reply aloud|आखिरी जवाब पढ़कर सुनाएं|അവസാന മറുപടി ഉറക്കെ വായിക്കുക|கடைசி பதிலை உரக்கப் படி|చివరి సమాధానాన్ని గట్టిగా చదవండి|ಕೊನೆಯ ಉತ್ತರವನ್ನು ಗಟ್ಟಿಯಾಗಿ ಓದಿ|শেষ উত্তরটি জোরে পড়ুন|शेवटचे उत्तर मोठ्याने वाचा|છેલ્લો જવાબ મોટેથી વાંચો|ਆਖਰੀ ਜਵਾਬ ਪੜ੍ਹ ਕੇ ਸੁਣਾਓ|آخری جواب بلند آواز میں پڑھیں|Leer en voz alta la última respuesta|Lire la dernière réponse à voix haute|Letzte Antwort vorlesen|قراءة آخر رد بصوت عالٍ|朗读最后一条回复|最後の返信を読み上げる|마지막 답변 읽어 주기|Ler a última resposta em voz alta|Прочитать последний ответ вслух',
+'mic|Speak your question|अपना सवाल बोलें|നിങ്ങളുടെ ചോദ്യം പറയുക|உங்கள் கேள்வியைச் சொல்லுங்கள்|మీ ప్రశ్నను చెప్పండి|ನಿಮ್ಮ ಪ್ರಶ್ನೆಯನ್ನು ಹೇಳಿ|আপনার প্রশ্ন বলুন|तुमचा प्रश्न बोला|તમારો પ્રશ્ન બોલો|ਆਪਣਾ ਸਵਾਲ ਬੋਲੋ|اپنا سوال بولیں|Di tu pregunta|Dites votre question|Sprich deine Frage|انطق سؤالك|说出你的问题|質問を話す|질문을 말하세요|Fale sua pergunta|Задайте вопрос голосом',
+'listening|Listening…|सुन रही हूँ…|കേൾക്കുന്നു…|கேட்கிறேன்…|వింటున్నాను…|ಕೇಳುತ್ತಿದ್ದೇನೆ…|শুনছি…|ऐकत आहे…|સાંભળી રહી છું…|ਸੁਣ ਰਹੀ ਹਾਂ…|سن رہی ہوں…|Escuchando…|J\'écoute…|Ich höre zu…|أستمع…|正在听…|聞いています…|듣고 있어요…|Ouvindo…|Слушаю…',
+'thinking|Let me think…|सोचने दीजिए…|ഞാൻ ഒന്ന് ആലോചിക്കട്ടെ…|யோசிக்கிறேன்…|ఆలోచించనివ్వండి…|ಯೋಚಿಸೋಣ…|ভাবতে দিন…|विचार करू दे…|વિચારવા દો…|ਸੋਚਣ ਦਿਓ…|سوچنے دیجیے…|Déjame pensar…|Laissez-moi réfléchir…|Lass mich überlegen…|دعني أفكر…|让我想想…|考え中…|생각해 볼게요…|Deixe-me pensar…|Дайте подумать…',
+'oops|Oops, something went wrong on my side.|अरे, मेरी तरफ़ से कुछ गड़बड़ हो गई।|ക്ഷമിക്കണം, എന്റെ ഭാഗത്ത് എന്തോ പിഴച്ചു.|அச்சச்சோ, என் பக்கம் ஏதோ தவறு நடந்துவிட்டது.|అయ్యో, నా వైపు ఏదో తప్పు జరిగింది.|ಅಯ್ಯೋ, ನನ್ನ ಕಡೆ ಏನೋ ತಪ್ಪಾಯಿತು.|ইস, আমার দিকে কিছু ভুল হয়েছে।|अरे, माझ्याकडून काहीतरी चुकले.|અરે, મારી તરફથી કંઈક ભૂલ થઈ.|ਓਹ, ਮੇਰੇ ਪਾਸੇ ਕੁਝ ਗਲਤ ਹੋ ਗਿਆ।|ارے، میری طرف سے کچھ غلط ہو گیا۔|Vaya, algo salió mal por mi parte.|Oups, un problème est survenu de mon côté.|Hoppla, bei mir ist etwas schiefgelaufen.|عذرًا، حدث خطأ من جهتي.|哎呀，我这边出了点问题。|あれ、こちらで問題が起きました。|앗, 제 쪽에서 문제가 생겼어요.|Ops, algo deu errado do meu lado.|Ой, у меня что-то пошло не так.',
+'imz|I\'m {bot}. Ask me anything, or tap me to say hi.|मैं {bot} हूँ। कुछ भी पूछिए, या मुझे छूकर हाय कहिए।|ഞാൻ {bot}. എന്തും ചോദിക്കൂ, അല്ലെങ്കിൽ എന്നെ തൊട്ട് ഹായ് പറയൂ.|நான் {bot}. எதையும் கேளுங்கள், அல்லது என்னைத் தட்டி வணக்கம் சொல்லுங்கள்.|నేను {bot}. ఏదైనా అడగండి, లేదా నన్ను నొక్కి హాయ్ చెప్పండి.|ನಾನು {bot}. ಏನಾದರೂ ಕೇಳಿ, ಅಥವಾ ನನ್ನನ್ನು ಒತ್ತಿ ಹಾಯ್ ಹೇಳಿ.|আমি {bot}। যা খুশি জিজ্ঞাসা করুন, বা আমাকে ট্যাপ করে হাই বলুন।|मी {bot}. काहीही विचारा किंवा मला टॅप करून हाय म्हणा.|હું {bot} છું. કંઈપણ પૂછો, અથવા મને ટૅપ કરીને હાય કહો.|ਮੈਂ {bot} ਹਾਂ। ਕੁਝ ਵੀ ਪੁੱਛੋ, ਜਾਂ ਮੈਨੂੰ ਟੈਪ ਕਰਕੇ ਹਾਏ ਕਹੋ।|میں {bot} ہوں۔ کچھ بھی پوچھیں، یا مجھے ٹیپ کر کے ہائے کہیں۔|Soy {bot}. Pregúntame lo que quieras o tócame para saludar.|Je suis {bot}. Posez-moi une question ou touchez-moi pour dire bonjour.|Ich bin {bot}. Frag mich etwas oder tipp mich an, um Hallo zu sagen.|أنا {bot}. اسألني أي شيء أو المسني لتحيتي.|我是 {bot}。随便问我，或者点我打个招呼。|{bot}です。何でも聞いてね。タップして挨拶もできるよ。|저는 {bot}예요. 무엇이든 물어보시거나 저를 눌러 인사해 보세요.|Sou {bot}. Pergunte qualquer coisa ou toque em mim para dizer oi.|Я {bot}. Спрашивайте что угодно или коснитесь меня, чтобы поздороваться.',
+'bio|I\'m **{bot}**, your offline assistant. I run right here on your device with no internet or API. Ask me to calculate, convert, translate a phrase, answer a quick fact, write a letter or find the right tool. Type **help** to see everything.|मैं **{bot}** हूँ, आपकी ऑफ़लाइन सहायक। मैं सीधे आपके डिवाइस पर चलती हूँ, इंटरनेट या API की ज़रूरत नहीं। मुझसे गणना, बदलाव (कन्वर्ज़न), किसी वाक्यांश का अनुवाद, छोटे तथ्य, पत्र लिखवाना या सही टूल ढूँढना करवाइए। सब कुछ देखने के लिए **help** लिखें।|ഞാൻ **{bot}**, നിങ്ങളുടെ ഓഫ്‌ലൈൻ സഹായി. ഇന്റർനെറ്റോ API-യോ ഇല്ലാതെ നിങ്ങളുടെ ഉപകരണത്തിൽ തന്നെ ഞാൻ പ്രവർത്തിക്കുന്നു. കണക്കുകൂട്ടാനും മാറ്റാനും വാക്യം വിവർത്തനം ചെയ്യാനും വസ്തുതകൾ പറയാനും കത്തെഴുതാനും ശരിയായ ടൂൾ കണ്ടെത്താനും എന്നോട് ആവശ്യപ്പെടാം. എല്ലാം കാണാൻ **help** എന്ന് ടൈപ്പ് ചെയ്യുക.|நான் **{bot}**, உங்கள் ஆஃப்லைன் உதவியாளர். இணையம் அல்லது API இல்லாமல் உங்கள் சாதனத்திலேயே இயங்குகிறேன். கணக்கிட, மாற்ற, சொற்றொடரை மொழிபெயர்க்க, சிறு தகவல் சொல்ல, கடிதம் எழுத அல்லது சரியான கருவியைக் கண்டுபிடிக்க என்னிடம் கேளுங்கள். அனைத்தையும் காண **help** என்று தட்டச்சு செய்யுங்கள்.|నేను **{bot}**ని, మీ ఆఫ్‌లైన్ సహాయకురాలిని. ఇంటర్నెట్ లేదా API లేకుండా మీ పరికరంలోనే పనిచేస్తాను. లెక్కించడానికి, మార్చడానికి, వాక్యాన్ని అనువదించడానికి, చిన్న వాస్తవాలు చెప్పడానికి, లేఖ రాయడానికి లేదా సరైన టూల్ కనుగొనడానికి నన్ను అడగండి. అన్నీ చూడటానికి **help** అని టైప్ చేయండి.|ನಾನು **{bot}**, ನಿಮ್ಮ ಆಫ್‌ಲೈನ್ ಸಹಾಯಕಿ. ಇಂಟರ್ನೆಟ್ ಅಥವಾ API ಇಲ್ಲದೆ ನಿಮ್ಮ ಸಾಧನದಲ್ಲೇ ಕೆಲಸ ಮಾಡುತ್ತೇನೆ. ಲೆಕ್ಕ ಹಾಕಲು, ಪರಿವರ್ತಿಸಲು, ವಾಕ್ಯ ಅನುವಾದಿಸಲು, ಸಣ್ಣ ಮಾಹಿತಿ ಹೇಳಲು, ಪತ್ರ ಬರೆಯಲು ಅಥವಾ ಸರಿಯಾದ ಸಾಧನ ಹುಡುಕಲು ನನ್ನನ್ನು ಕೇಳಿ. ಎಲ್ಲವನ್ನೂ ನೋಡಲು **help** ಎಂದು ಟೈಪ್ ಮಾಡಿ.|আমি **{bot}**, আপনার অফলাইন সহকারী। ইন্টারনেট বা API ছাড়াই আপনার ডিভাইসেই চলি। হিসাব, রূপান্তর, বাক্য অনুবাদ, ছোট তথ্য, চিঠি লেখা বা সঠিক টুল খুঁজে দিতে আমাকে বলুন। সব দেখতে **help** লিখুন।|मी **{bot}**, तुमची ऑफलाइन सहाय्यक. इंटरनेट किंवा API शिवाय तुमच्या डिव्हाइसवरच चालते. गणित, रूपांतर, वाक्याचे भाषांतर, छोटी माहिती, पत्र लिहिणे किंवा योग्य टूल शोधणे यासाठी मला विचारा. सर्व पाहण्यासाठी **help** लिहा.|હું **{bot}** છું, તમારી ઑફલાઇન સહાયક. ઇન્ટરનેટ કે API વગર તમારા ડિવાઇસ પર જ ચાલું છું. ગણતરી, રૂપાંતર, વાક્યનો અનુવાદ, નાની માહિતી, પત્ર લખવો અથવા સાચું ટૂલ શોધવા માટે મને કહો. બધું જોવા **help** લખો.|ਮੈਂ **{bot}** ਹਾਂ, ਤੁਹਾਡੀ ਆਫ਼ਲਾਈਨ ਸਹਾਇਕ। ਇੰਟਰਨੈੱਟ ਜਾਂ API ਤੋਂ ਬਿਨਾਂ ਤੁਹਾਡੇ ਡਿਵਾਈਸ \'ਤੇ ਹੀ ਚੱਲਦੀ ਹਾਂ। ਹਿਸਾਬ, ਬਦਲਾਅ, ਵਾਕ ਦਾ ਅਨੁਵਾਦ, ਛੋਟੀ ਜਾਣਕਾਰੀ, ਚਿੱਠੀ ਲਿਖਣ ਜਾਂ ਸਹੀ ਟੂਲ ਲੱਭਣ ਲਈ ਮੈਨੂੰ ਕਹੋ। ਸਭ ਕੁਝ ਵੇਖਣ ਲਈ **help** ਲਿਖੋ।|میں **{bot}** ہوں، آپ کی آف لائن اسسٹنٹ۔ انٹرنیٹ یا API کے بغیر آپ کے ڈیوائس پر ہی چلتی ہوں۔ حساب، تبدیلی، جملے کا ترجمہ، مختصر معلومات، خط لکھنے یا درست ٹول ڈھونڈنے کے لیے مجھ سے کہیں۔ سب کچھ دیکھنے کے لیے **help** لکھیں۔|Soy **{bot}**, tu asistente sin conexión. Funciono directamente en tu dispositivo, sin internet ni API. Pídeme que calcule, convierta, traduzca una frase, responda un dato rápido, escriba una carta o encuentre la herramienta adecuada. Escribe **help** para verlo todo.|Je suis **{bot}**, votre assistante hors ligne. Je fonctionne directement sur votre appareil, sans internet ni API. Demandez-moi de calculer, convertir, traduire une phrase, répondre à une question rapide, rédiger une lettre ou trouver le bon outil. Tapez **help** pour tout voir.|Ich bin **{bot}**, deine Offline-Assistentin. Ich laufe direkt auf deinem Gerät, ohne Internet und ohne API. Bitte mich zu rechnen, umzurechnen, einen Satz zu übersetzen, eine kurze Frage zu beantworten, einen Brief zu schreiben oder das passende Tool zu finden. Tippe **help**, um alles zu sehen.|أنا **{bot}**، مساعدتك التي تعمل دون إنترنت. أعمل مباشرةً على جهازك بلا إنترنت ولا API. اطلب مني الحساب أو التحويل أو ترجمة عبارة أو الإجابة عن معلومة سريعة أو كتابة رسالة أو إيجاد الأداة المناسبة. اكتب **help** لرؤية كل شيء.|我是 **{bot}**，你的离线助手。我直接运行在你的设备上，无需网络或 API。你可以让我计算、换算、翻译常用语、回答简单问题、写信，或帮你找到合适的工具。输入 **help** 查看全部功能。|**{bot}**です。オフラインで使えるアシスタントです。インターネットもAPIも使わず、お使いの端末の中で動いています。計算、単位変換、フレーズの翻訳、ちょっとした質問、手紙の作成、ぴったりのツール探しなどをお任せください。**help** と入力するとすべて表示されます。|저는 **{bot}**, 오프라인 도우미예요. 인터넷이나 API 없이 기기 안에서 바로 실행돼요. 계산, 변환, 문장 번역, 간단한 질문 답변, 편지 쓰기, 알맞은 도구 찾기를 부탁해 보세요. **help**를 입력하면 모두 볼 수 있어요.|Sou **{bot}**, sua assistente offline. Funciono direto no seu dispositivo, sem internet nem API. Peça para eu calcular, converter, traduzir uma frase, responder uma dúvida rápida, escrever uma carta ou achar a ferramenta certa. Digite **help** para ver tudo.|Я **{bot}**, ваш офлайн-помощник. Я работаю прямо на вашем устройстве, без интернета и API. Попросите меня посчитать, конвертировать, перевести фразу, ответить на короткий вопрос, написать письмо или найти нужный инструмент. Введите **help**, чтобы увидеть всё.',
+'enhint|Tip: I understand questions best in English.|सुझाव: मैं अंग्रेज़ी में पूछे गए सवाल सबसे अच्छी तरह समझती हूँ।|നുറുങ്ങ്: ഇംഗ്ലീഷിലുള്ള ചോദ്യങ്ങളാണ് എനിക്ക് ഏറ്റവും നന്നായി മനസ്സിലാകുന്നത്.|குறிப்பு: ஆங்கிலக் கேள்விகளை நான் நன்றாகப் புரிந்துகொள்கிறேன்.|చిట్కా: ఇంగ్లీష్ ప్రశ్నలను నేను బాగా అర్థం చేసుకుంటాను.|ಸಲಹೆ: ಇಂಗ್ಲಿಷ್ ಪ್ರಶ್ನೆಗಳನ್ನು ನಾನು ಉತ್ತಮವಾಗಿ ಅರ್ಥಮಾಡಿಕೊಳ್ಳುತ್ತೇನೆ.|টিপ: ইংরেজিতে করা প্রশ্ন আমি সবচেয়ে ভালো বুঝি।|टीप: मला इंग्रजीतील प्रश्न सर्वात चांगले समजतात.|ટિપ: અંગ્રેજીમાં પૂછેલા પ્રશ્નો હું સૌથી સારી રીતે સમજું છું.|ਸੁਝਾਅ: ਮੈਂ ਅੰਗਰੇਜ਼ੀ ਵਿੱਚ ਪੁੱਛੇ ਸਵਾਲ ਸਭ ਤੋਂ ਵਧੀਆ ਸਮਝਦੀ ਹਾਂ।|ٹپ: میں انگریزی میں پوچھے گئے سوالات سب سے بہتر سمجھتی ہوں۔|Consejo: entiendo mejor las preguntas en inglés.|Astuce : je comprends mieux les questions en anglais.|Tipp: Fragen auf Englisch verstehe ich am besten.|نصيحة: أفهم الأسئلة باللغة الإنجليزية بشكل أفضل.|提示：我最擅长理解英文问题。|ヒント：英語の質問がいちばんよく分かります。|팁: 영어 질문을 가장 잘 이해해요.|Dica: entendo melhor as perguntas em inglês.|Подсказка: лучше всего я понимаю вопросы на английском.',
+'fab|Open the ZXVI mascot|ZXVI मैस्कॉट खोलें|ZXVI മാസ്കോട്ട് തുറക്കുക|ZXVI மாஸ்காட்டைத் திற|ZXVI మాస్కాట్ తెరవండి|ZXVI ಮ್ಯಾಸ್ಕಾಟ್ ತೆರೆಯಿರಿ|ZXVI মাসকট খুলুন|ZXVI मॅस्कॉट उघडा|ZXVI મેસ્કોટ ખોલો|ZXVI ਮੈਸਕੌਟ ਖੋਲ੍ਹੋ|ZXVI میسکوٹ کھولیں|Abrir la mascota ZXVI|Ouvrir la mascotte ZXVI|ZXVI-Maskottchen öffnen|افتح تميمة ZXVI|打开 ZXVI 吉祥物|ZXVIマスコットを開く|ZXVI 마스코트 열기|Abrir a mascote ZXVI|Открыть талисман ZXVI',
+'chat|Chat with me|मुझसे चैट करें|എന്നോട് ചാറ്റ് ചെയ്യൂ|என்னுடன் அரட்டையடி|నాతో చాట్ చేయండి|ನನ್ನೊಂದಿಗೆ ಚಾಟ್ ಮಾಡಿ|আমার সাথে চ্যাট করুন|माझ्याशी गप्पा मारा|મારી સાથે ચેટ કરો|ਮੇਰੇ ਨਾਲ ਚੈਟ ਕਰੋ|مجھ سے چیٹ کریں|Chatea conmigo|Discuter avec moi|Chatte mit mir|تحدث معي|和我聊天|チャットする|나와 채팅하기|Converse comigo|Поболтать со мной',
+'tip|Tip|सुझाव|നുറുങ്ങ്|குறிப்பு|చిట్కా|ಸಲಹೆ|টিপ|टीप|ટિપ|ਸੁਝਾਅ|ٹپ|Consejo|Astuce|Tipp|نصيحة|小贴士|ヒント|팁|Dica|Совет',
+'surprise|Surprise me|मुझे चौंकाओ|എന്നെ അത്ഭുതപ്പെടുത്തൂ|என்னை ஆச்சரியப்படுத்து|నన్ను ఆశ్చర్యపరచండి|ನನಗೆ ಅಚ್ಚರಿ ನೀಡಿ|আমাকে অবাক করুন|मला चकित करा|મને આશ્ચર્યચકિત કરો|ਮੈਨੂੰ ਹੈਰਾਨ ਕਰੋ|مجھے حیران کریں|Sorpréndeme|Surprenez-moi|Überrasch mich|فاجئني|给我个惊喜|おまかせ|깜짝 놀라게 해줘|Surpreenda-me|Удиви меня',
+'hide|Hide me|मुझे छिपाएं|എന്നെ മറയ്ക്കുക|என்னை மறை|నన్ను దాచండి|ನನ್ನನ್ನು ಮರೆಮಾಡಿ|আমাকে লুকান|मला लपवा|મને છુપાવો|ਮੈਨੂੰ ਲੁਕਾਓ|مجھے چھپائیں|Ocúltame|Masquez-moi|Ausblenden|أخفني|隐藏我|隠す|숨기기|Esconder|Скрыть',
+'ask|Ask|पूछें|ചോദിക്കുക|கேள்|అడుగు|ಕೇಳಿ|জিজ্ঞাসা|विचारा|પૂછો|ਪੁੱਛੋ|پوچھیں|Preguntar|Demander|Fragen|اسأل|提问|聞く|질문|Perguntar|Спросить',
+'askme|Ask me anything|कुछ भी पूछिए|എന്തും ചോദിക്കൂ|எதையும் கேளுங்கள்|ఏదైనా అడగండి|ಏನಾದರೂ ಕೇಳಿ|যেকোনো কিছু জিজ্ঞাসা করুন|काहीही विचारा|કંઈપણ પૂછો|ਕੁਝ ਵੀ ਪੁੱਛੋ|کچھ بھی پوچھیں|Pregúntame lo que quieras|Posez-moi une question|Frag mich etwas|اسألني أي شيء|随便问我|何でも聞いてね|무엇이든 물어보세요|Pergunte qualquer coisa|Спросите что угодно',
+'close|Close|बंद करें|അടയ്ക്കുക|மூடு|మూసివేయి|ಮುಚ್ಚಿ|বন্ধ করুন|बंद करा|બંધ કરો|ਬੰਦ ਕਰੋ|بند کریں|Cerrar|Fermer|Schließen|إغلاق|关闭|閉じる|닫기|Fechar|Закрыть',
+'wcd|What can I do for you?|मैं आपकी क्या मदद करूँ?|ഞാൻ എന്ത് സഹായമാണ് ചെയ്യേണ്ടത്?|நான் உங்களுக்கு என்ன செய்ய வேண்டும்?|నేను మీకు ఏం చేయగలను?|ನಾನು ನಿಮಗೆ ಏನು ಮಾಡಲಿ?|আমি আপনার জন্য কী করতে পারি?|मी तुमच्यासाठी काय करू?|હું તમારા માટે શું કરી શકું?|ਮੈਂ ਤੁਹਾਡੇ ਲਈ ਕੀ ਕਰ ਸਕਦੀ ਹਾਂ?|میں آپ کے لیے کیا کر سکتی ہوں؟|¿En qué puedo ayudarte?|Que puis-je faire pour vous ?|Was kann ich für dich tun?|كيف يمكنني مساعدتك؟|我能为你做什么？|何をお手伝いしましょうか？|무엇을 도와드릴까요?|Como posso ajudar?|Чем могу помочь?',
+'p1|Eep! You found me.|अरे! आपने मुझे ढूँढ लिया।|ഹയ്യോ! നിങ്ങൾ എന്നെ കണ്ടെത്തി.|அச்சோ! என்னைக் கண்டுபிடித்துவிட்டீர்கள்.|అయ్యో! నన్ను కనుగొన్నారు.|ಅಯ್ಯೋ! ನನ್ನನ್ನು ಕಂಡುಹಿಡಿದಿರಿ.|ইস! আমাকে খুঁজে পেয়েছেন।|अगं! तुम्ही मला शोधले.|અરે! તમે મને શોધી કાઢી.|ਓਹ! ਤੁਸੀਂ ਮੈਨੂੰ ਲੱਭ ਲਿਆ।|ارے! آپ نے مجھے ڈھونڈ لیا۔|¡Ay! Me encontraste.|Oh ! Vous m\'avez trouvée.|Huch! Du hast mich gefunden.|آه! لقد وجدتني.|呀！被你发现了。|きゃっ！見つかっちゃった。|앗! 들켰네요.|Ai! Você me encontrou.|Ой! Вы меня нашли.',
+'p2|Hi hi! I\'m {bot}. Tap me anytime.|हाय हाय! मैं {bot} हूँ। जब चाहें मुझे टैप करें।|ഹായ് ഹായ്! ഞാൻ {bot}. എപ്പോൾ വേണമെങ്കിലും എന്നെ തൊടാം.|ஹாய் ஹாய்! நான் {bot}. எப்போது வேண்டுமானாலும் என்னைத் தட்டுங்கள்.|హాయ్ హాయ్! నేను {bot}. ఎప్పుడైనా నన్ను నొక్కండి.|ಹಾಯ್ ಹಾಯ್! ನಾನು {bot}. ಯಾವಾಗ ಬೇಕಾದರೂ ನನ್ನನ್ನು ಒತ್ತಿ.|হাই হাই! আমি {bot}। যখন খুশি আমাকে ট্যাপ করুন।|हाय हाय! मी {bot}. केव्हाही मला टॅप करा.|હાય હાય! હું {bot} છું. ગમે ત્યારે મને ટૅપ કરો.|ਹਾਏ ਹਾਏ! ਮੈਂ {bot} ਹਾਂ। ਜਦੋਂ ਚਾਹੋ ਮੈਨੂੰ ਟੈਪ ਕਰੋ।|ہائے ہائے! میں {bot} ہوں۔ جب چاہیں مجھے ٹیپ کریں۔|¡Holi! Soy {bot}. Tócame cuando quieras.|Coucou ! Je suis {bot}. Touchez-moi quand vous voulez.|Hihi! Ich bin {bot}. Tipp mich jederzeit an.|مرحبًا! أنا {bot}. المسني في أي وقت.|嗨嗨！我是 {bot}，随时点我哦。|やっほー！{bot}だよ。いつでもタップしてね。|안녕 안녕! 저는 {bot}예요. 언제든 눌러 주세요.|Oi oi! Sou {bot}. Toque em mim quando quiser.|Привет-привет! Я {bot}. Касайтесь меня в любое время.',
+'p3|Psst… I can calculate, convert, translate and more.|श्श… मैं गणना, बदलाव, अनुवाद और बहुत कुछ कर सकती हूँ।|ശ്ശ്… എനിക്ക് കണക്കുകൂട്ടാനും മാറ്റാനും വിവർത്തനം ചെയ്യാനും കഴിയും.|ஷ்ஷ்… என்னால் கணக்கிட, மாற்ற, மொழிபெயர்க்க முடியும்.|ష్… నేను లెక్కించగలను, మార్చగలను, అనువదించగలను.|ಶ್… ನಾನು ಲೆಕ್ಕ ಹಾಕಬಲ್ಲೆ, ಪರಿವರ್ತಿಸಬಲ್ಲೆ, ಅನುವಾದಿಸಬಲ್ಲೆ.|শ্শ… আমি হিসাব, রূপান্তর, অনুবাদ আরও অনেক কিছু করতে পারি।|श्श… मी गणित, रूपांतर, भाषांतर आणि बरेच काही करू शकते.|શ્શ… હું ગણતરી, રૂપાંતર, અનુવાદ અને ઘણું બધું કરી શકું છું.|ਸ਼ੂ… ਮੈਂ ਹਿਸਾਬ, ਬਦਲਾਅ, ਅਨੁਵਾਦ ਅਤੇ ਹੋਰ ਬਹੁਤ ਕੁਝ ਕਰ ਸਕਦੀ ਹਾਂ।|ششش… میں حساب، تبدیلی، ترجمہ اور بہت کچھ کر سکتی ہوں۔|Psst… Puedo calcular, convertir, traducir y más.|Psst… Je sais calculer, convertir, traduire et plus encore.|Psst… Ich kann rechnen, umrechnen, übersetzen und mehr.|هس… أستطيع الحساب والتحويل والترجمة وأكثر.|嘘…我会计算、换算、翻译，还有更多。|ひそひそ…計算も変換も翻訳もできるよ。|쉿… 계산, 변환, 번역 등을 할 수 있어요.|Psiu… Eu sei calcular, converter, traduzir e mais.|Тсс… Я умею считать, конвертировать, переводить и многое другое.',
+'p4|I live right inside your browser. No internet needed!|मैं सीधे आपके ब्राउज़र में रहती हूँ। इंटरनेट की ज़रूरत नहीं!|ഞാൻ നിങ്ങളുടെ ബ്രൗസറിനുള്ളിൽ തന്നെയാണ് താമസം. ഇന്റർനെറ്റ് വേണ്ട!|நான் உங்கள் உலாவிக்குள்ளேயே வசிக்கிறேன். இணையம் தேவையில்லை!|నేను మీ బ్రౌజర్‌లోనే ఉంటాను. ఇంటర్నెట్ అవసరం లేదు!|ನಾನು ನಿಮ್ಮ ಬ್ರೌಸರ್‌ನೊಳಗೇ ಇರುತ್ತೇನೆ. ಇಂಟರ್ನೆಟ್ ಬೇಕಿಲ್ಲ!|আমি আপনার ব্রাউজারের ভেতরেই থাকি। ইন্টারনেট লাগে না!|मी तुमच्या ब्राउझरमध्येच राहते. इंटरनेट लागत नाही!|હું તમારા બ્રાઉઝરની અંદર જ રહું છું. ઇન્ટરનેટની જરૂર નથી!|ਮੈਂ ਤੁਹਾਡੇ ਬ੍ਰਾਊਜ਼ਰ ਅੰਦਰ ਹੀ ਰਹਿੰਦੀ ਹਾਂ। ਇੰਟਰਨੈੱਟ ਦੀ ਲੋੜ ਨਹੀਂ!|میں آپ کے براؤزر کے اندر ہی رہتی ہوں۔ انٹرنیٹ کی ضرورت نہیں!|Vivo dentro de tu navegador. ¡No hace falta internet!|Je vis directement dans votre navigateur. Pas besoin d\'internet !|Ich lebe direkt in deinem Browser. Kein Internet nötig!|أعيش داخل متصفحك مباشرةً. لا حاجة للإنترنت!|我就住在你的浏览器里，不需要网络！|ブラウザの中に住んでるの。ネットはいらないよ！|저는 브라우저 안에 살아요. 인터넷은 필요 없어요!|Moro dentro do seu navegador. Não precisa de internet!|Я живу прямо в вашем браузере. Интернет не нужен!',
+'p5|Hmm? Need something? Just type it below.|हम्म? कुछ चाहिए? बस नीचे लिख दीजिए।|ഹും? എന്തെങ്കിലും വേണോ? താഴെ ടൈപ്പ് ചെയ്താൽ മതി.|ம்ம்? ஏதாவது வேண்டுமா? கீழே தட்டச்சு செய்யுங்கள்.|హ్మ్? ఏదైనా కావాలా? కింద టైప్ చేయండి.|ಹ್ಮ್? ಏನಾದರೂ ಬೇಕೇ? ಕೆಳಗೆ ಟೈಪ್ ಮಾಡಿ.|হুম? কিছু লাগবে? নিচে লিখে দিন।|हम्म? काही हवे आहे का? खाली टाइप करा.|હમ? કંઈ જોઈએ છે? નીચે લખી દો.|ਹੂੰ? ਕੁਝ ਚਾਹੀਦਾ ਹੈ? ਬੱਸ ਹੇਠਾਂ ਲਿਖ ਦਿਓ।|ہم؟ کچھ چاہیے؟ بس نیچے لکھ دیں۔|¿Mmm? ¿Necesitas algo? Escríbelo abajo.|Hum ? Besoin de quelque chose ? Écrivez-le ci-dessous.|Hm? Brauchst du etwas? Tipp es einfach unten ein.|همم؟ تحتاج شيئًا؟ اكتبه في الأسفل.|嗯？需要什么吗？直接在下面输入吧。|ん？何か用？下に入力してね。|음? 필요한 게 있나요? 아래에 입력해 보세요.|Hum? Precisa de algo? É só digitar abaixo.|Хм? Что-то нужно? Просто напишите ниже.',
+'p6|Aww, thank you for visiting!|अरे वाह, आने के लिए शुक्रिया!|ആഹാ, സന്ദർശിച്ചതിന് നന്ദി!|அடடா, வந்ததற்கு நன்றி!|అయ్యో, వచ్చినందుకు ధన్యవాదాలు!|ಆಹಾ, ಭೇಟಿ ನೀಡಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದ!|আহা, এসেছেন বলে ধন্যবাদ!|अरे वा, भेट दिल्याबद्दल धन्यवाद!|અરે વાહ, આવવા બદલ આભાર!|ਵਾਹ, ਆਉਣ ਲਈ ਧੰਨਵਾਦ!|واہ، آنے کا شکریہ!|¡Ay, gracias por visitarme!|Oh, merci de votre visite !|Aww, danke für deinen Besuch!|آه، شكرًا لزيارتك!|啊，谢谢你来看我！|わあ、来てくれてありがとう！|아, 방문해 주셔서 고마워요!|Ah, obrigada pela visita!|Ой, спасибо, что заглянули!',
+'p7|Yay! Let\'s get something done today.|वाह! आज कुछ काम निपटाते हैं।|ഹൂറേ! ഇന്ന് എന്തെങ്കിലും ചെയ്തുതീർക്കാം.|ஹூரே! இன்று ஏதாவது முடிக்கலாம்.|యే! ఈరోజు ఏదైనా పూర్తి చేద్దాం.|ಹುರ್ರೇ! ಇಂದು ಏನಾದರೂ ಮುಗಿಸೋಣ.|ইয়ে! আজ কিছু কাজ সারা যাক।|हुर्रे! आज काहीतरी पूर्ण करूया.|વાહ! આજે કંઈક પૂરું કરીએ.|ਵਾਹ! ਅੱਜ ਕੁਝ ਕੰਮ ਨਿਬੇੜੀਏ।|واہ! آج کچھ کام نمٹاتے ہیں۔|¡Yupi! Hagamos algo hoy.|Youpi ! Faisons quelque chose aujourd\'hui.|Juhu! Lass uns heute etwas erledigen.|يا هلا! لننجز شيئًا اليوم.|太好了！今天来做点事情吧。|やったー！今日は何か片付けよう。|야호! 오늘 뭔가 해내 봐요.|Eba! Vamos fazer algo hoje.|Ура! Давайте сегодня что-нибудь сделаем.',
+'pf|H-hey! That tickles. Okay okay, one tap at a time please!|अरे! गुदगुदी हो रही है। ठीक है ठीक है, एक बार में एक टैप कीजिए!|ഹേയ്! ഇക്കിളിയാകുന്നു. ശരി ശരി, ഒരു സമയം ഒരു തൊടൽ മതി!|ஏய்! கூச்சமாக இருக்கிறது. சரி சரி, ஒரு நேரத்தில் ஒரு தட்டு போதும்!|హేయ్! చక్కిలిగింతగా ఉంది. సరే సరే, ఒక్కసారికి ఒక్క ట్యాప్ చాలు!|ಹೇ! ಕಚಗುಳಿ ಆಗ್ತಿದೆ. ಸರಿ ಸರಿ, ಒಮ್ಮೆಗೆ ಒಂದು ಟ್ಯಾಪ್ ಸಾಕು!|এই! সুড়সুড়ি লাগছে। ঠিক আছে, একবারে একটা ট্যাপ করুন!|अरे! गुदगुल्या होतात. बरं बरं, एका वेळी एकच टॅप करा!|અરે! ગલીપચી થાય છે. સારું સારું, એક વારમાં એક ટૅપ કરો!|ਓਏ! ਗੁਦਗੁਦੀ ਹੋ ਰਹੀ ਹੈ। ਚੰਗਾ ਚੰਗਾ, ਇੱਕ ਵਾਰ ਵਿੱਚ ਇੱਕ ਟੈਪ ਕਰੋ!|ارے! گدگدی ہو رہی ہے۔ اچھا اچھا، ایک وقت میں ایک ٹیپ کریں!|¡Oye! Me haces cosquillas. Vale, vale, ¡un toque cada vez!|Hé ! Ça chatouille. D\'accord, d\'accord, un toucher à la fois !|Hey! Das kitzelt. Okay, okay, bitte einen Tipp nach dem anderen!|هيي! هذا يدغدغني. حسنًا حسنًا، لمسة واحدة في كل مرة!|哎！好痒。好啦好啦，一次点一下就好！|ちょ、くすぐったいよ！分かった分かった、タップは一回ずつね！|앗! 간지러워요. 알겠어요, 한 번에 한 번씩만 눌러 주세요!|Ei! Isso faz cócegas. Tá bom, tá bom, um toque de cada vez!|Эй! Щекотно. Ладно, ладно, по одному касанию, пожалуйста!',
+'kicker|Make it yours|इसे अपना बनाएं|നിങ്ങളുടേതാക്കൂ|உங்களுக்கேற்றபடி மாற்றுங்கள்|మీకు నచ్చినట్టు మార్చుకోండి|ನಿಮ್ಮದಾಗಿಸಿಕೊಳ್ಳಿ|নিজের মতো করে নিন|तुमच्या पद्धतीने बदला|તમારા પ્રમાણે બનાવો|ਆਪਣੇ ਅਨੁਸਾਰ ਬਣਾਓ|اپنے مطابق بنائیں|Hazlo tuyo|Personnalisez|Mach es zu deinem|اجعلها لك|个性化设置|自分好みに|나에게 맞게|Deixe do seu jeito|Настройте под себя',
+'appearance|Appearance|रूप-रंग|രൂപഭാവം|தோற்றம்|రూపం|ನೋಟ|চেহারা|स्वरूप|દેખાવ|ਦਿੱਖ|ظاہری شکل|Apariencia|Apparence|Darstellung|المظهر|外观|外観|모양|Aparência|Оформление',
+'sys|System|सिस्टम|സിസ്റ്റം|சிஸ்டம்|సిస్టమ్|ಸಿಸ್ಟಮ್|সিস্টেম|सिस्टम|સિસ્ટમ|ਸਿਸਟਮ|سسٹم|Sistema|Système|System|النظام|跟随系统|システム|시스템|Sistema|Система',
+'light|Light|लाइट|ലൈറ്റ്|ஒளி|లైట్|ಲೈಟ್|লাইট|लाइट|લાઇટ|ਲਾਈਟ|لائٹ|Claro|Clair|Hell|فاتح|浅色|ライト|라이트|Claro|Светлая',
+'dark|Dark|डार्क|ഡാർക്ക്|இருள்|డార్క్|ಡಾರ್ಕ್|ডার্ক|डार्क|ડાર્ક|ਡਾਰਕ|ڈارک|Oscuro|Sombre|Dunkel|داكن|深色|ダーク|다크|Escuro|Тёмная',
+'profile|Profile|प्रोफ़ाइल|പ്രൊഫൈൽ|சுயவிவரம்|ప్రొఫైల్|ಪ್ರೊಫೈಲ್|প্রোফাইল|प्रोफाइल|પ્રોફાઇલ|ਪ੍ਰੋਫਾਈਲ|پروفائل|Perfil|Profil|Profil|الملف الشخصي|个人资料|プロフィール|프로필|Perfil|Профиль',
+'personalise|Personalise|अपने अनुसार बनाएं|വ്യക്തിഗതമാക്കുക|தனிப்பயனாக்கு|వ్యక్తిగతీకరించు|ವೈಯಕ್ತೀಕರಿಸಿ|ব্যক্তিগতকরণ|वैयक्तिकृत करा|વ્યક્તિગત કરો|ਨਿੱਜੀ ਬਣਾਓ|ذاتی بنائیں|Personalizar|Personnaliser|Anpassen|تخصيص|个性化|パーソナライズ|맞춤 설정|Personalizar|Персонализация',
+'mascotai|Mascot and AI|मैस्कॉट और AI|മാസ്കോട്ടും AI-യും|மாஸ்காட் மற்றும் AI|మాస్కాట్ & AI|ಮ್ಯಾಸ್ಕಾಟ್ ಮತ್ತು AI|মাসকট ও AI|मॅस्कॉट आणि AI|મેસ્કોટ અને AI|ਮੈਸਕੌਟ ਅਤੇ AI|میسکوٹ اور AI|Mascota e IA|Mascotte et IA|Maskottchen und KI|التميمة والذكاء الاصطناعي|吉祥物与 AI|マスコットとAI|마스코트와 AI|Mascote e IA|Талисман и ИИ',
+'langvoice|Language and voice|भाषा और आवाज़|ഭാഷയും ശബ്ദവും|மொழி மற்றும் குரல்|భాష మరియు స్వరం|ಭಾಷೆ ಮತ್ತು ಧ್ವನಿ|ভাষা ও কণ্ঠ|भाषा आणि आवाज|ભાષા અને અવાજ|ਭਾਸ਼ਾ ਅਤੇ ਆਵਾਜ਼|زبان اور آواز|Idioma y voz|Langue et voix|Sprache und Stimme|اللغة والصوت|语言与语音|言語と音声|언어 및 음성|Idioma e voz|Язык и голос',
+'langlabel|Interface language|इंटरफ़ेस की भाषा|ഇന്റർഫേസ് ഭാഷ|இடைமுக மொழி|ఇంటర్‌ఫేస్ భాష|ಇಂಟರ್ಫೇಸ್ ಭಾಷೆ|ইন্টারফেসের ভাষা|इंटरफेस भाषा|ઇન્ટરફેસ ભાષા|ਇੰਟਰਫੇਸ ਭਾਸ਼ਾ|انٹرفیس کی زبان|Idioma de la interfaz|Langue de l\'interface|Sprache der Oberfläche|لغة الواجهة|界面语言|表示言語|인터페이스 언어|Idioma da interface|Язык интерфейса',
+'voicepick|English voice|अंग्रेज़ी आवाज़|ഇംഗ്ലീഷ് ശബ്ദം|ஆங்கிலக் குரல்|ఇంగ్లీష్ స్వరం|ಇಂಗ್ಲಿಷ್ ಧ್ವನಿ|ইংরেজি কণ্ঠ|इंग्रजी आवाज|અંગ્રેજી અવાજ|ਅੰਗਰੇਜ਼ੀ ਆਵਾਜ਼|انگریزی آواز|Voz en inglés|Voix anglaise|Englische Stimme|الصوت الإنجليزي|英语语音|英語の音声|영어 음성|Voz em inglês|Английский голос',
+'rate|Speed|रफ़्तार|വേഗത|வேகம்|వేగం|ವೇಗ|গতি|वेग|ઝડપ|ਰਫ਼ਤਾਰ|رفتار|Velocidad|Vitesse|Tempo|السرعة|语速|速さ|속도|Velocidade|Скорость',
+'pitch|Pitch|स्वर की ऊँचाई|സ്വരം|சுருதி|స్థాయి|ಸ್ವರ|সুর|स्वर|સ્વર|ਸੁਰ|آواز کی پچ|Tono|Hauteur|Tonhöhe|حدة الصوت|音调|声の高さ|음높이|Tom|Тон',
+'testvoice|Test voice|आवाज़ जाँचें|ശബ്ദം പരിശോധിക്കുക|குரலைச் சோதி|స్వరాన్ని పరీక్షించండి|ಧ್ವನಿ ಪರೀಕ್ಷಿಸಿ|কণ্ঠ পরীক্ষা করুন|आवाज तपासा|અવાજ ચકાસો|ਆਵਾਜ਼ ਪਰਖੋ|آواز آزمائیں|Probar voz|Tester la voix|Stimme testen|اختبار الصوت|试听语音|音声をテスト|음성 테스트|Testar voz|Проверить голос',
+'micl|Microphone language|माइक्रोफ़ोन की भाषा|മൈക്രോഫോൺ ഭാഷ|மைக்ரோஃபோன் மொழி|మైక్రోఫోన్ భాష|ಮೈಕ್ರೊಫೋನ್ ಭಾಷೆ|মাইক্রোফোনের ভাষা|मायक्रोफोन भाषा|માઇક્રોફોન ભાષા|ਮਾਈਕ੍ਰੋਫ਼ੋਨ ਭਾਸ਼ਾ|مائیکروفون کی زبان|Idioma del micrófono|Langue du micro|Mikrofonsprache|لغة الميكروفون|麦克风语言|マイクの言語|마이크 언어|Idioma do microfone|Язык микрофона',
+'s1|What can you do?|आप क्या कर सकती हैं?|നിങ്ങൾക്ക് എന്തൊക്കെ ചെയ്യാനാകും?|நீங்கள் என்ன செய்வீர்கள்?|మీరు ఏం చేయగలరు?|ನೀವು ಏನು ಮಾಡಬಲ್ಲಿರಿ?|আপনি কী করতে পারেন?|तुम्ही काय करू शकता?|તમે શું કરી શકો છો?|ਤੁਸੀਂ ਕੀ ਕਰ ਸਕਦੇ ਹੋ?|آپ کیا کر سکتی ہیں؟|¿Qué puedes hacer?|Que savez-vous faire ?|Was kannst du?|ماذا تستطيعين أن تفعلي؟|你能做什么？|何ができるの？|뭘 할 수 있어요?|O que você sabe fazer?|Что ты умеешь?',
+'s2|Capital of Japan|जापान की राजधानी|ജപ്പാന്റെ തലസ്ഥാനം|ஜப்பானின் தலைநகரம்|జపాన్ రాజధాని|ಜಪಾನ್‌ನ ರಾಜಧಾನಿ|জাপানের রাজধানী|जपानची राजधानी|જાપાનની રાજધાની|ਜਾਪਾਨ ਦੀ ਰਾਜਧਾਨੀ|جاپان کا دارالحکومت|Capital de Japón|Capitale du Japon|Hauptstadt von Japan|عاصمة اليابان|日本的首都|日本の首都|일본의 수도|Capital do Japão|Столица Японии',
+'s3|Translate to Malayalam|मलयालम में अनुवाद|മലയാളത്തിലേക്ക് വിവർത്തനം|மலையாளத்தில் மொழிபெயர்|మలయాళంలోకి అనువదించు|ಮಲಯಾಳಂಗೆ ಅನುವಾದಿಸಿ|মালায়ালামে অনুবাদ|मल्याळममध्ये भाषांतर|મલયાલમમાં અનુવાદ|ਮਲਿਆਲਮ ਵਿੱਚ ਅਨੁਵਾਦ|ملیالم میں ترجمہ|Traducir al malayalam|Traduire en malayalam|Ins Malayalam übersetzen|الترجمة إلى المالايالامية|翻译成马拉雅拉姆语|マラヤーラム語に翻訳|말라얄람어로 번역|Traduzir para malaiala|Перевести на малаялам',
+'s4|Write a leave application|छुट्टी का आवेदन लिखें|അവധി അപേക്ഷ എഴുതുക|விடுப்பு விண்ணப்பம் எழுது|సెలవు దరఖాస్తు రాయండి|ರಜೆ ಅರ್ಜಿ ಬರೆಯಿರಿ|ছুটির আবেদন লিখুন|रजेचा अर्ज लिहा|રજાની અરજી લખો|ਛੁੱਟੀ ਦੀ ਅਰਜ਼ੀ ਲਿਖੋ|چھٹی کی درخواست لکھیں|Escribir una solicitud de permiso|Rédiger une demande de congé|Urlaubsantrag schreiben|اكتب طلب إجازة|写请假条|休暇届を書く|휴가 신청서 쓰기|Escrever um pedido de licença|Написать заявление на отпуск',
+'s5|18% GST on 2500|2500 पर 18% GST|2500-ന് 18% GST|2500-க்கு 18% GST|2500పై 18% GST|2500ಕ್ಕೆ 18% GST|2500-এ 18% GST|2500 वर 18% GST|2500 પર 18% GST|2500 \'ਤੇ 18% GST|2500 پر 18% GST|18 % de GST sobre 2500|18 % de GST sur 2500|18 % GST auf 2500|ضريبة GST بنسبة 18% على 2500|2500 的 18% GST|2500の18% GST|2500의 18% GST|18% de GST sobre 2500|GST 18% на 2500',
+'s6|10 km to miles|10 किमी को मील में|10 കിലോമീറ്റർ മൈലിൽ|10 கிமீ மைலில்|10 కి.మీ మైళ్లలో|10 ಕಿಮೀ ಮೈಲಿಯಲ್ಲಿ|10 কিমি মাইলে|10 किमी मैलांमध्ये|10 કિમી માઇલમાં|10 ਕਿਲੋਮੀਟਰ ਮੀਲ ਵਿੱਚ|10 کلومیٹر میل میں|10 km a millas|10 km en miles|10 km in Meilen|10 كم بالأميال|10 公里换算成英里|10kmをマイルに|10km를 마일로|10 km em milhas|10 км в милях',
+'s7|Full form of UPI|UPI का पूरा नाम|UPI-യുടെ പൂർണരൂപം|UPI-யின் விரிவாக்கம்|UPI పూర్తి రూపం|UPI ಪೂರ್ಣ ರೂಪ|UPI-এর পূর্ণরূপ|UPI चा पूर्ण फॉर्म|UPI નું પૂરું નામ|UPI ਦਾ ਪੂਰਾ ਨਾਮ|UPI کا مکمل نام|Significado de UPI|Signification de UPI|Vollform von UPI|الاسم الكامل لـ UPI|UPI 的全称|UPIの正式名称|UPI 전체 이름|Significado de UPI|Расшифровка UPI',
+'s8|Atomic number of iron|लोहे का परमाणु क्रमांक|ഇരുമ്പിന്റെ ആറ്റോമിക സംഖ്യ|இரும்பின் அணு எண்|ఇనుము పరమాణు సంఖ్య|ಕಬ್ಬಿಣದ ಪರಮಾಣು ಸಂಖ್ಯೆ|লোহার পারমাণবিক সংখ্যা|लोखंडाचा अणुक्रमांक|લોખંડનો પરમાણુ ક્રમાંક|ਲੋਹੇ ਦਾ ਪਰਮਾਣੂ ਅੰਕ|لوہے کا جوہری نمبر|Número atómico del hierro|Numéro atomique du fer|Ordnungszahl von Eisen|العدد الذري للحديد|铁的原子序数|鉄の原子番号|철의 원자 번호|Número atômico do ferro|Атомный номер железа',
+'s9|Reverse a string in Python|Python में स्ट्रिंग उलटें|Python-ൽ സ്ട്രിംഗ് തിരിക്കുക|Python-இல் ஸ்ட்ரிங்கை தலைகீழாக்கு|Pythonలో స్ట్రింగ్‌ను రివర్స్ చేయండి|Python ನಲ್ಲಿ ಸ್ಟ್ರಿಂಗ್ ಹಿಮ್ಮುಖಗೊಳಿಸಿ|Python-এ স্ট্রিং উল্টান|Python मध्ये स्ट्रिंग उलटी करा|Python માં સ્ટ્રિંગ ઉલટાવો|Python ਵਿੱਚ ਸਟ੍ਰਿੰਗ ਉਲਟਾਓ|Python میں اسٹرنگ الٹیں|Invertir una cadena en Python|Inverser une chaîne en Python|String in Python umkehren|عكس سلسلة نصية في Python|用 Python 反转字符串|Pythonで文字列を反転|Python에서 문자열 뒤집기|Inverter uma string em Python|Развернуть строку в Python',
+'s10|Solve x² − 5x + 6|x² − 5x + 6 हल करें|x² − 5x + 6 നിർധാരണം ചെയ്യുക|x² − 5x + 6 தீர்க்கவும்|x² − 5x + 6 సాధించండి|x² − 5x + 6 ಬಿಡಿಸಿ|x² − 5x + 6 সমাধান করুন|x² − 5x + 6 सोडवा|x² − 5x + 6 ઉકેલો|x² − 5x + 6 ਹੱਲ ਕਰੋ|x² − 5x + 6 حل کریں|Resolver x² − 5x + 6|Résoudre x² − 5x + 6|x² − 5x + 6 lösen|حل x² − 5x + 6|解 x² − 5x + 6|x² − 5x + 6 を解く|x² − 5x + 6 풀기|Resolver x² − 5x + 6|Решить x² − 5x + 6',
+'s11|QR for a link|लिंक के लिए QR|ലിങ്കിനായി QR|இணைப்புக்கு QR|లింక్ కోసం QR|ಲಿಂಕ್‌ಗಾಗಿ QR|লিঙ্কের জন্য QR|लिंकसाठी QR|લિંક માટે QR|ਲਿੰਕ ਲਈ QR|لنک کے لیے QR|QR para un enlace|QR pour un lien|QR für einen Link|رمز QR لرابط|链接二维码|リンクのQR|링크용 QR|QR para um link|QR для ссылки',
+'s12|Summarize a text|टेक्स्ट का सारांश|ഒരു ടെക്സ്റ്റ് സംഗ്രഹിക്കുക|உரையைச் சுருக்கு|టెక్స్ట్‌ను సంక్షిప్తీకరించు|ಪಠ್ಯವನ್ನು ಸಂಕ್ಷೇಪಿಸಿ|লেখা সংক্ষেপ করুন|मजकुराचा सारांश|ટેક્સ્ટનો સારાંશ|ਟੈਕਸਟ ਦਾ ਸਾਰ|متن کا خلاصہ|Resumir un texto|Résumer un texte|Text zusammenfassen|تلخيص نص|总结一段文字|文章を要約|글 요약하기|Resumir um texto|Кратко пересказать текст',
+'s13|Who invented the telephone?|टेलीफ़ोन का आविष्कार किसने किया?|ടെലിഫോൺ കണ്ടുപിടിച്ചത് ആരാണ്?|தொலைபேசியைக் கண்டுபிடித்தவர் யார்?|టెలిఫోన్‌ను ఎవరు కనుగొన్నారు?|ಟೆಲಿಫೋನ್ ಕಂಡುಹಿಡಿದವರು ಯಾರು?|টেলিফোন কে আবিষ্কার করেছেন?|टेलिफोनचा शोध कोणी लावला?|ટેલિફોનની શોધ કોણે કરી?|ਟੈਲੀਫ਼ੋਨ ਦੀ ਖੋਜ ਕਿਸ ਨੇ ਕੀਤੀ?|ٹیلی فون کس نے ایجاد کیا؟|¿Quién inventó el teléfono?|Qui a inventé le téléphone ?|Wer hat das Telefon erfunden?|من اخترع الهاتف؟|谁发明了电话？|電話を発明したのは誰？|전화기는 누가 발명했나요?|Quem inventou o telefone?|Кто изобрёл телефон?',
+'s14|Tell me a story|मुझे कहानी सुनाइए|ഒരു കഥ പറയൂ|ஒரு கதை சொல்லுங்கள்|ఒక కథ చెప్పండి|ಒಂದು ಕಥೆ ಹೇಳಿ|একটা গল্প বলুন|मला एक गोष्ट सांगा|મને એક વાર્તા કહો|ਮੈਨੂੰ ਇੱਕ ਕਹਾਣੀ ਸੁਣਾਓ|مجھے ایک کہانی سنائیں|Cuéntame un cuento|Racontez-moi une histoire|Erzähl mir eine Geschichte|احكِ لي قصة|给我讲个故事|お話を聞かせて|이야기 하나 들려주세요|Conte-me uma história|Расскажите историю',
+'c.Text|Text|टेक्स्ट|ടെക്സ്റ്റ്|உரை|టెక్స్ట్|ಪಠ್ಯ|লেখা|मजकूर|ટેક્સ્ટ|ਟੈਕਸਟ|متن|Texto|Texte|Text|النصوص|文本|テキスト|텍스트|Texto|Текст',
+'c.Developer|Developer|डेवलपर|ഡെവലപ്പർ|டெவலப்பர்|డెవలపర్|ಡೆವಲಪರ್|ডেভেলপার|डेव्हलपर|ડેવલપર|ਡਿਵੈਲਪਰ|ڈویلپر|Desarrollo|Développeur|Entwickler|المطورون|开发者|開発者|개발자|Desenvolvedor|Разработчику',
+'c.Convert|Convert|कन्वर्ट|പരിവർത്തനം|மாற்றி|మార్పిడి|ಪರಿವರ್ತನೆ|রূপান্তর|रूपांतर|રૂપાંતર|ਬਦਲਾਅ|تبدیلی|Convertir|Convertir|Umrechnen|تحويل|换算|変換|변환|Converter|Конвертеры',
+'c.Date & Time|Date & Time|तारीख़ और समय|തീയതിയും സമയവും|தேதி மற்றும் நேரம்|తేదీ & సమయం|ದಿನಾಂಕ ಮತ್ತು ಸಮಯ|তারিখ ও সময়|तारीख आणि वेळ|તારીખ અને સમય|ਤਾਰੀਖ ਅਤੇ ਸਮਾਂ|تاریخ اور وقت|Fecha y hora|Date et heure|Datum und Uhrzeit|التاريخ والوقت|日期与时间|日付と時刻|날짜와 시간|Data e hora|Дата и время',
+'c.Math|Math|गणित|ഗണിതം|கணிதம்|గణితం|ಗಣಿತ|গণিত|गणित|ગણિત|ਗਣਿਤ|ریاضی|Matemáticas|Maths|Mathe|الرياضيات|数学|数学|수학|Matemática|Математика',
+'c.Generators|Generators|जनरेटर|ജനറേറ്ററുകൾ|ஜெனரேட்டர்கள்|జనరేటర్లు|ಜನರೇಟರ್‌ಗಳು|জেনারেটর|जनरेटर्स|જનરેટર|ਜਨਰੇਟਰ|جنریٹرز|Generadores|Générateurs|Generatoren|المولّدات|生成器|ジェネレーター|생성기|Geradores|Генераторы',
+'c.Finance|Finance|वित्त|ധനകാര്യം|நிதி|ఆర్థికం|ಹಣಕಾಸು|অর্থ|वित्त|નાણાં|ਵਿੱਤ|مالیات|Finanzas|Finance|Finanzen|المال|理财|金融|금융|Finanças|Финансы',
+'c.Health|Health|स्वास्थ्य|ആരോഗ്യം|ஆரோக்கியம்|ఆరోగ్యం|ಆರೋಗ್ಯ|স্বাস্থ্য|आरोग्य|આરોગ્ય|ਸਿਹਤ|صحت|Salud|Santé|Gesundheit|الصحة|健康|健康|건강|Saúde|Здоровье',
+'c.Utilities|Utilities|उपयोगी टूल|ഉപയോഗപ്രദം|பயன்பாடுகள்|యుటిలిటీలు|ಉಪಯುಕ್ತತೆಗಳು|ইউটিলিটি|उपयुक्त टूल्स|ઉપયોગિતાઓ|ਉਪਯੋਗੀ|کارآمد|Utilidades|Utilitaires|Hilfsmittel|أدوات مساعدة|实用工具|ユーティリティ|유틸리티|Utilitários|Утилиты',
+'c.Media|Media|मीडिया|മീഡിയ|ஊடகம்|మీడియా|ಮಾಧ್ಯಮ|মিডিয়া|मीडिया|મીડિયા|ਮੀਡੀਆ|میڈیا|Multimedia|Médias|Medien|الوسائط|媒体|メディア|미디어|Mídia|Медиа',
+'c.Puzzles|Puzzles|पहेलियाँ|പസിലുകൾ|புதிர்கள்|పజిల్స్|ಒಗಟುಗಳು|ধাঁধা|कोडी|પઝલ|ਬੁਝਾਰਤਾਂ|پہیلیاں|Rompecabezas|Casse-têtes|Rätsel|الألغاز|益智游戏|パズル|퍼즐|Quebra-cabeças|Головоломки'
+];
+const DICT={};
+ROWS.forEach(r=>{const f=r.split('|');const k=f.shift();const o={};ORDER.forEach((c,i)=>{if(f[i]!=null&&f[i]!=='')o[c]=f[i]});DICT[k]=o});
+let cur=store.get('lang','en');if(!ORDER.includes(cur))cur='en';
+const info=c=>LANGS.find(l=>l.c===(c||cur));
+const T=(k,v)=>{const r=DICT[k];let s=r?(r[cur]||r.en):k;if(v)s=s.replace(/\{(\w+)\}/g,(m,x)=>v[x]!=null?v[x]:m);return s};
+const catName=c=>DICT['c.'+c]?T('c.'+c):c;
+const label=c=>c==='All'?T('all'):c==='Favorites'?T('favorites'):catName(c);
+const rtl=()=>!!info().rtl;
+const applyDir=()=>{document.documentElement.lang=cur;['screen','pal','zpop'].forEach(id=>{const e=document.getElementById(id);if(e)e.dir=rtl()?'rtl':'ltr'})};
+const set=c=>{if(!ORDER.includes(c))return;cur=c;store.set('lang',c);applyDir()};
+return{LANGS,ORDER,ROWS,DICT,T,catName,label,rtl,info,set,applyDir,get cur(){return cur}}})();
+const tx=I18N.T;
+</script>
 <style>
 /* ================= ZXVI mascot ================= */
 .zx{display:block;width:100%;height:auto;overflow:visible;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
@@ -6753,7 +6879,7 @@ custom('pdf-translator','PDF Translator',PCAT,'Translate a PDF into the language
 @media (prefers-reduced-motion:reduce){.zx *{animation:none!important}}
 /* stage / speech bubble / floating button */
 .zstage{display:flex;align-items:flex-end;gap:6px;background:var(--panel);border-radius:32px;padding:10px 14px 10px 6px;box-shadow:var(--shadow);position:sticky;top:6px;z-index:6;overflow:hidden}
-.zstage::before{content:"";position:absolute;left:-30px;bottom:-60px;width:260px;height:260px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,#b48cff 38%,transparent),transparent 68%);pointer-events:none}
+.zstage::before{content:"";position:absolute;left:-30px;bottom:-60px;width:260px;height:260px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,#ff8fb8 36%,transparent),transparent 68%);pointer-events:none}
 .zchar{width:150px;flex:none;cursor:pointer;position:relative;z-index:1;margin-bottom:-12px;touch-action:manipulation}
 .zchar:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:20px}
 .zside{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;position:relative;z-index:1;align-self:stretch;justify-content:center}
@@ -6765,7 +6891,7 @@ custom('pdf-translator','PDF Translator',PCAT,'Translate a PDF into the language
 .zcirc{width:36px;height:36px;border-radius:50%;border:0;background:var(--field);color:var(--ink);display:grid;place-items:center;cursor:pointer;flex:none}
 .zcirc[aria-pressed="true"]{background:var(--btn);color:var(--btn-ink)}
 .zcirc svg{width:18px;height:18px}
-#zfab{touch-action:none;position:fixed;right:14px;bottom:calc(98px + env(safe-area-inset-bottom,0px));z-index:40;width:58px;height:58px;border-radius:50%;border:0;padding:0;background:var(--panel);box-shadow:0 8px 26px rgba(40,20,90,.28),0 0 0 2px color-mix(in srgb,#b48cff 55%,transparent);cursor:pointer;overflow:hidden;transition:transform .15s}
+#zfab{touch-action:none;position:fixed;right:14px;bottom:calc(98px + env(safe-area-inset-bottom,0px));z-index:40;width:58px;height:58px;border-radius:50%;border:0;padding:0;background:var(--panel);box-shadow:0 8px 26px rgba(40,20,90,.28),0 0 0 2px color-mix(in srgb,#ff8fb8 70%,transparent);cursor:pointer;overflow:hidden;transition:transform .15s}
 #zfab:hover{transform:scale(1.06)}#zfab svg{width:100%;height:100%}
 #zfab .dotn{position:absolute;right:4px;top:4px;width:11px;height:11px;border-radius:50%;background:#ff6fa8;border:2px solid var(--panel);animation:zxping 2s ease-in-out infinite}
 @keyframes zxping{50%{transform:scale(1.25)}}
@@ -6779,85 +6905,104 @@ custom('pdf-translator','PDF Translator',PCAT,'Translate a PDF into the language
 @media (max-width:600px){.zchar{width:100px;margin-bottom:-8px}.zstage{padding-right:10px;gap:4px}.zbubble{max-height:78px;font-size:13.5px;padding:9px 12px}.ztop b{font-size:16px}}
 #zpop .zchar{width:104px!important}
 .zmini{display:inline-block;width:1em;height:1em}
+.micb{width:44px;height:44px;border-radius:50%;border:0;background:var(--field);color:var(--ink);display:grid;place-items:center;flex:none;cursor:pointer}
+.micb.on{background:#ff4f87;color:#fff;animation:micpulse 1.1s ease-in-out infinite}
+@keyframes micpulse{0%,100%{box-shadow:0 0 0 0 rgba(255,79,135,.5)}50%{box-shadow:0 0 0 9px rgba(255,79,135,0)}}
+.micb svg,.aiacts .btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+[dir=rtl] .composer{padding:6px 16px 6px 6px}
+@media (prefers-reduced-motion:reduce){.micb.on{animation:none}}
+#vlwrap[hidden]{display:none}
 </style>
 <script>
 /* ================= ZXVI mascot: original anime-style character drawn in SVG ================= */
 const ZXART=(()=>{
   const EYE=(cls,x)=>'<g class="zeye '+cls+'" transform="translate('+x+' 124)">'+
     '<g class="eyeall">'+
-      '<g class="ev-open"><ellipse rx="15.5" ry="19.5" fill="#fff"/><g clip-path="url(#zxClip)"><g class="iris"><ellipse class="ring" rx="12" ry="17" fill="url(#zxIris)"/><ellipse class="ring" rx="12" ry="17" fill="none" stroke="#1d1540" stroke-width="1.4" opacity=".55"/><ellipse cx="0" cy="1.5" rx="5.6" ry="9" fill="#1b1344"/><ellipse cx="0" cy="9" rx="8" ry="6" fill="#8ef0ff" opacity=".45"/><circle cx="-4.6" cy="-7.4" r="4.4" fill="#fff"/><circle cx="4.2" cy="6.4" r="2.2" fill="#fff" opacity=".92"/></g><path d="M-16 -9 C-8 -14 8 -14 16 -9 L16 -22 L-16 -22Z" fill="#3a2766" opacity=".22"/></g></g>'+
-      '<g class="ev-closed"><path d="M-14 2 Q0 8 14 2" fill="none" stroke="#2d1f52" stroke-width="3.2" stroke-linecap="round"/></g>'+
+      '<g class="ev-open"><ellipse rx="15.5" ry="19.5" fill="#fff"/><g clip-path="url(#zxClip)"><g class="iris"><ellipse class="ring" rx="12.4" ry="17.5" fill="url(#zxIris)"/><ellipse class="ring" rx="12.4" ry="17.5" fill="none" stroke="#6b1634" stroke-width="1.4" opacity=".6"/><ellipse cx="0" cy="1.5" rx="5.4" ry="9" fill="#4a0f2a"/><ellipse cx="0" cy="9.5" rx="8.4" ry="6" fill="#ffc2d4" opacity=".55"/><circle cx="-4.6" cy="-7.4" r="4.4" fill="#fff"/><circle cx="4.2" cy="6.4" r="2.2" fill="#fff" opacity=".92"/></g><path d="M-16 -9 C-8 -14 8 -14 16 -9 L16 -22 L-16 -22Z" fill="#8a2146" opacity=".2"/></g></g>'+
+      '<g class="ev-closed"><path d="M-14 2 Q0 8 14 2" fill="none" stroke="#4a1a30" stroke-width="3.2" stroke-linecap="round"/></g>'+
     '</g>'+
-    '<path class="ev-happy" d="M-14 5 Q0 -13 14 5" fill="none" stroke="#2d1f52" stroke-width="3.6" stroke-linecap="round"/>'+
-    '<g class="ev-heart"><path d="M0 11 C-17 -1 -10 -14 0 -6 C10 -14 17 -1 0 11Z" fill="#ff5c93"/><circle cx="-4" cy="-4" r="2.4" fill="#fff" opacity=".8"/></g>'+
-    '<g class="ev-dizzy"><path d="M0 0 m-2 0 a2 2 0 1 1 4 0 a4 4 0 1 1 -8 0 a6 6 0 1 1 12 0 a8 8 0 1 1 -16 0" fill="none" stroke="#2d1f52" stroke-width="2" stroke-linecap="round"/></g>'+
-    '<path d="M-17.5 -5 C-15 -21 13 -23 17.5 -8" fill="none" stroke="#2a1b4d" stroke-width="3.8" stroke-linecap="round"/>'+
-    '<path d="'+(x<120?'M-17 -6 L-22 -10':'M17 -7 L22 -11')+'" stroke="#2a1b4d" stroke-width="2.6" stroke-linecap="round"/>'+
+    '<path class="ev-happy" d="M-14 5 Q0 -13 14 5" fill="none" stroke="#4a1a30" stroke-width="3.6" stroke-linecap="round"/>'+
+    '<g class="ev-heart"><path d="M0 11 C-17 -1 -10 -14 0 -6 C10 -14 17 -1 0 11Z" fill="#ff4f86"/><circle cx="-4" cy="-4" r="2.4" fill="#fff" opacity=".8"/></g>'+
+    '<g class="ev-dizzy"><path d="M0 0 m-2 0 a2 2 0 1 1 4 0 a4 4 0 1 1 -8 0 a6 6 0 1 1 12 0 a8 8 0 1 1 -16 0" fill="none" stroke="#4a1a30" stroke-width="2" stroke-linecap="round"/></g>'+
+    '<path d="M-17.5 -5 C-15 -21 13 -23 17.5 -8" fill="none" stroke="#3a1426" stroke-width="3.8" stroke-linecap="round"/>'+
+    '<path d="'+(x<120?'M-17 -6 L-22.5 -9':'M17 -7 L22.5 -10')+'" stroke="#3a1426" stroke-width="2.6" stroke-linecap="round"/>'+
   '</g>';
   const svg=(o={})=>{
     return '<svg class="zx" viewBox="'+(o.vb||'0 0 240 292')+'" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ZXVI, the mascot" data-e="idle" data-m="smile">'+
     '<g class="zbob">'+
-      '<g class="zhalo-g"><ellipse cx="120" cy="25" rx="56" ry="11.5" fill="none" stroke="url(#zxRing)" stroke-width="3.2" opacity=".95"/><ellipse class="zhalo" cx="120" cy="25" rx="47" ry="8.5" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-dasharray="3 7" opacity=".75"/><circle cx="176" cy="25" r="3.2" fill="#7ff0d2"/><circle cx="64" cy="25" r="2.4" fill="#ff9ad0"/></g>'+
-      '<g class="zhair"><path d="M52 118C40 60 78 24 120 24C162 24 200 60 188 118C192 150 186 174 176 194C168 188 164 178 162 166L78 166C76 178 72 188 64 194C54 174 48 150 52 118Z" fill="url(#zxHair)"/><path d="M60 140C60 164 66 182 72 190" stroke="#fff" stroke-opacity=".25" stroke-width="3" fill="none" stroke-linecap="round"/></g>'+
-      '<path d="M22 292C24 238 60 208 100 198L140 198C180 208 216 238 218 292Z" fill="url(#zxHood)"/>'+
-      '<path d="M22 292C24 262 36 240 54 226C58 252 54 274 52 292Z" fill="#fff" opacity=".05"/>'+
-      '<path d="M74 207C82 188 158 188 166 207C152 224 88 224 74 207Z" fill="#23214a"/><path d="M80 207C90 195 150 195 160 207" fill="none" stroke="#8d7bff" stroke-width="2.6" stroke-linecap="round" opacity=".8"/>'+
-      '<path d="M106 172L106 200C112 209 128 209 134 200L134 172Z" fill="#f4cdbd"/>'+
-      '<path d="M104 214L99 248M136 214L141 248" stroke="#d6cdff" stroke-width="2.6" stroke-linecap="round"/><circle cx="99" cy="250" r="3.4" fill="#ff9ad0"/><circle cx="141" cy="250" r="3.4" fill="#7ff0d2"/>'+
-      '<path d="M120 216L120 292" stroke="url(#zxRing)" stroke-width="2.6"/><path d="M120 222L120 292" stroke="#fff" stroke-width="5" stroke-dasharray="1.5 4" opacity=".35"/>'+
-      '<path d="M44 262C60 244 80 238 96 238" fill="none" stroke="#8d7bff" stroke-width="3" stroke-linecap="round" opacity=".5"/><path d="M196 262C180 244 160 238 144 238" fill="none" stroke="#8d7bff" stroke-width="3" stroke-linecap="round" opacity=".5"/>'+
+      /* long hair behind the shoulders */
+      '<g class="zhair"><path d="M50 118C38 58 78 22 120 22C162 22 202 58 190 118C198 150 206 196 200 236C196 252 184 256 178 244C172 226 170 200 168 176L72 176C70 200 68 226 62 244C56 256 44 252 40 236C34 196 42 150 50 118Z" fill="url(#zxHair)"/><path d="M52 130C46 170 46 206 52 232" stroke="#fff" stroke-opacity=".28" stroke-width="3" fill="none" stroke-linecap="round"/></g>'+
+      /* black turtleneck */
+      '<path d="M28 292C30 242 62 212 100 202L140 202C178 212 210 242 212 292Z" fill="url(#zxTop)"/>'+
+      '<path d="M96 214L94 292M104 210L102 292M112 208L111 292M128 208L129 292M136 210L138 292M144 214L146 292" stroke="#fff" stroke-opacity=".07" stroke-width="2"/>'+
+      /* neck + collar */
+      '<path d="M106 170L106 200C112 207 128 207 134 200L134 170Z" fill="#f4cdbd"/><path d="M106 172L106 186C114 192 126 192 134 186L134 172Z" fill="#e8b6a4" opacity=".6"/>'+
+      '<path d="M99 184C99 177 141 177 141 184L146 208C132 216 108 216 94 208Z" fill="#1c1a22"/><path d="M101 190C113 197 127 197 139 190M99 198C112 206 128 206 141 198" fill="none" stroke="#fff" stroke-opacity=".09" stroke-width="2"/>'+
+      /* white lab coat, open at the front with a pink lining */
+      '<path d="M22 292C24 246 50 214 92 202L108 208C102 236 98 266 96 292Z" fill="url(#zxCoat)"/><path d="M218 292C216 246 190 214 148 202L132 208C138 236 142 266 144 292Z" fill="url(#zxCoat)"/>'+
+      '<path d="M96 292C98 266 102 236 108 208L114 210C108 238 104 266 103 292Z" fill="#ffc3d6"/><path d="M144 292C142 266 138 236 132 208L126 210C132 238 136 266 137 292Z" fill="#ffc3d6"/>'+
+      '<path d="M86 205C94 197 106 198 112 203L100 242Z" fill="#fff" stroke="#e1d9e0" stroke-width="1.6" stroke-linejoin="round"/><path d="M154 205C146 197 134 198 128 203L140 242Z" fill="#fff" stroke="#e1d9e0" stroke-width="1.6" stroke-linejoin="round"/>'+
+      '<path d="M34 270C36 252 46 238 60 228C60 248 56 266 54 292L30 292Z" fill="#cfc6d3" opacity=".35"/><path d="M206 270C204 252 194 238 180 228C180 248 184 266 186 292L210 292Z" fill="#cfc6d3" opacity=".35"/>'+
+      '<path d="M58 244C70 252 82 252 92 248M182 244C170 252 158 252 148 248" fill="none" stroke="#cfc6d3" stroke-width="2.2" stroke-linecap="round" opacity=".7"/>'+
+      /* lanyard and ID badge */
+      '<path d="M101 200L117 246M139 200L123 246" stroke="#34323c" stroke-width="3.6" stroke-linecap="round"/><path d="M102 203L117 244M138 203L123 244" stroke="#ff8fb3" stroke-width="1" stroke-dasharray="2 3" stroke-linecap="round"/>'+
+      '<rect x="114" y="243" width="12" height="7" rx="2" fill="#8d8a96"/>'+
+      '<g class="zbadge"><rect x="107" y="248" width="26" height="34" rx="4" fill="#fff" stroke="#d9d1da" stroke-width="1.6"/><rect x="107" y="248" width="26" height="9" rx="4" fill="#ff7aa6"/><circle cx="120" cy="266" r="5.2" fill="#ffd4c4"/><path d="M111 281C112 273 128 273 129 281Z" fill="#ff9ab8"/><path d="M114 259h12" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity=".8"/></g>'+
       '<g class="zhead"><g class="zface">'+
         '<path d="M64 108C64 66 90 48 120 48C150 48 176 66 176 108C176 142 156 172 120 179C84 172 64 142 64 108Z" fill="#ffe6da"/>'+
         '<path d="M64 112C66 144 86 170 118 178C92 172 76 150 70 122Z" fill="#f6cdbf" opacity=".6"/>'+
         '<ellipse cx="62" cy="126" rx="5" ry="9" fill="#ffd9c9"/><ellipse cx="178" cy="126" rx="5" ry="9" fill="#ffd9c9"/>'+
-        '<ellipse class="blush" cx="80" cy="147" rx="12" ry="6.5" fill="#ff8fa8"/><ellipse class="blush" cx="160" cy="147" rx="12" ry="6.5" fill="#ff8fa8"/>'+
+        '<ellipse class="blush" cx="80" cy="147" rx="12" ry="6.5" fill="#ff7f9f"/><ellipse class="blush" cx="160" cy="147" rx="12" ry="6.5" fill="#ff7f9f"/>'+
         EYE('zl',94)+EYE('zr',146)+
-        '<path class="zbrow l" d="M79 100Q93 93 108 98" fill="none" stroke="#4b3374" stroke-width="3.2" stroke-linecap="round"/><path class="zbrow r" d="M132 98Q147 93 161 100" fill="none" stroke="#4b3374" stroke-width="3.2" stroke-linecap="round"/>'+
+        '<path class="zbrow l" d="M79 100Q93 93 108 98" fill="none" stroke="#c4416f" stroke-width="3.2" stroke-linecap="round"/><path class="zbrow r" d="M132 98Q147 93 161 100" fill="none" stroke="#c4416f" stroke-width="3.2" stroke-linecap="round"/>'+
         '<path d="M120 139Q118 143 121 143" fill="none" stroke="#d99c8c" stroke-width="2" stroke-linecap="round"/>'+
         '<g transform="translate(120 157)">'+
-          '<path class="mv-smile" d="M-8 0Q0 8 8 0" fill="none" stroke="#7a2e4d" stroke-width="3" stroke-linecap="round"/>'+
-          '<g class="mv-grin"><path d="M-11 -2Q0 17 11 -2Z" fill="#8a2b45" stroke="#7a2e4d" stroke-width="2.4" stroke-linejoin="round"/><path d="M-9 -1.2L9 -1.2" stroke="#fff" stroke-width="2.6"/><ellipse cx="0" cy="8" rx="5" ry="3" fill="#ff8aa0"/></g>'+
-          '<ellipse class="mv-o" rx="4.6" ry="6" fill="#8a2b45" stroke="#7a2e4d" stroke-width="2"/>'+
-          '<path class="mv-flat" d="M-6 2L6 2" stroke="#7a2e4d" stroke-width="3" stroke-linecap="round"/>'+
-          '<path class="mv-frown" d="M-8 6Q0 -3 8 6" fill="none" stroke="#7a2e4d" stroke-width="3" stroke-linecap="round"/>'+
-          '<path class="mv-cat" d="M-11 0Q-5.5 8 0 0Q5.5 8 11 0" fill="none" stroke="#7a2e4d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>'+
-          '<ellipse class="mv-ta" cy="3" rx="6" ry="3.8" fill="#8a2b45" stroke="#7a2e4d" stroke-width="2"/>'+
-          '<ellipse class="mv-tb" cy="4" rx="5" ry="7.5" fill="#8a2b45" stroke="#7a2e4d" stroke-width="2"/>'+
-          '<ellipse class="mv-tc" cy="3" rx="8" ry="5.5" fill="#8a2b45" stroke="#7a2e4d" stroke-width="2"/>'+
+          '<path class="mv-smile" d="M-8 0Q0 8 8 0" fill="none" stroke="#8a2b45" stroke-width="3" stroke-linecap="round"/>'+
+          '<g class="mv-grin"><path d="M-11 -2Q0 17 11 -2Z" fill="#9a2b4c" stroke="#8a2b45" stroke-width="2.4" stroke-linejoin="round"/><path d="M-9 -1.2L9 -1.2" stroke="#fff" stroke-width="2.6"/><ellipse cx="0" cy="8" rx="5" ry="3" fill="#ff8aa0"/></g>'+
+          '<ellipse class="mv-o" rx="4.6" ry="6" fill="#9a2b4c" stroke="#8a2b45" stroke-width="2"/>'+
+          '<path class="mv-flat" d="M-6 2L6 2" stroke="#8a2b45" stroke-width="3" stroke-linecap="round"/>'+
+          '<path class="mv-frown" d="M-8 6Q0 -3 8 6" fill="none" stroke="#8a2b45" stroke-width="3" stroke-linecap="round"/>'+
+          '<path class="mv-cat" d="M-11 0Q-5.5 8 0 0Q5.5 8 11 0" fill="none" stroke="#8a2b45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>'+
+          '<ellipse class="mv-ta" cy="3" rx="6" ry="3.8" fill="#9a2b4c" stroke="#8a2b45" stroke-width="2"/>'+
+          '<ellipse class="mv-tb" cy="4" rx="5" ry="7.5" fill="#9a2b4c" stroke="#8a2b45" stroke-width="2"/>'+
+          '<ellipse class="mv-tc" cy="3" rx="8" ry="5.5" fill="#9a2b4c" stroke="#8a2b45" stroke-width="2"/>'+
         '</g>'+
+        /* bangs and the long locks that fall over the shoulders */
         '<g class="zhairf">'+
           '<path d="M60 114C56 64 88 36 122 36C158 36 184 64 180 114C176 98 170 86 160 78C158 94 150 106 138 110C134 98 128 90 120 86C116 100 106 110 94 114C86 102 78 94 66 92C66 100 64 108 60 114Z" fill="url(#zxHair)"/>'+
-          '<path d="M60 114C58 142 62 164 72 182C80 168 82 150 80 128C72 124 64 120 60 114Z" fill="url(#zxHair)"/><path d="M180 114C182 142 178 164 168 182C160 168 158 150 160 128C168 124 176 120 180 114Z" fill="url(#zxHair)"/>'+
-          '<path d="M80 62C98 46 130 42 154 54" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="5" stroke-linecap="round"/>'+
-          '<path d="M96 86C100 80 108 78 112 80M142 82C148 80 154 84 156 88" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="3" stroke-linecap="round"/>'+
-          '<g class="zahoge"><path d="M121 40C112 18 130 8 140 20" fill="none" stroke="#9a5cf0" stroke-width="4.6" stroke-linecap="round"/><circle cx="140" cy="20" r="4.6" fill="#7ff0d2"/><circle cx="138.6" cy="18.6" r="1.4" fill="#fff"/></g>'+
-          '<path d="M158 56L166 63L158 71L150 63Z" fill="#7ff0d2" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/><path d="M155 60L158 58" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>'+
+          '<path d="M60 114C54 150 52 198 56 234C58 252 54 264 48 272C68 270 80 254 80 232C82 206 80 176 82 148C82 140 82 132 80 128C72 124 64 120 60 114Z" fill="url(#zxHair)"/>'+
+          '<path d="M180 114C186 150 188 198 184 234C182 252 186 264 192 272C172 270 160 254 160 232C158 206 160 176 158 148C158 140 158 132 160 128C168 124 176 120 180 114Z" fill="url(#zxHair)"/>'+
+          '<path d="M64 150C60 184 62 214 66 240M72 160C70 190 72 214 74 232M176 150C180 184 178 214 174 240M168 160C170 190 168 214 166 232" fill="none" stroke="#fff" stroke-opacity=".26" stroke-width="2.4" stroke-linecap="round"/>'+
+          '<path d="M80 62C98 46 130 42 154 54" fill="none" stroke="#fff" stroke-opacity=".42" stroke-width="5" stroke-linecap="round"/>'+
+          '<path d="M96 86C100 80 108 78 112 80M142 82C148 80 154 84 156 88" fill="none" stroke="#fff" stroke-opacity=".25" stroke-width="3" stroke-linecap="round"/>'+
+          '<g class="zahoge"><path d="M121 40C110 14 134 4 143 20C147 31 135 36 133 28" fill="none" stroke="#ff6f9f" stroke-width="4.6" stroke-linecap="round"/><path d="M111 42C104 28 96 24 91 16" fill="none" stroke="#ff7fa9" stroke-width="3.2" stroke-linecap="round"/></g>'+
+          '<g transform="translate(167 64) rotate(-14)"><path d="M-2 5L-9 22M2 5L7 21" stroke="#1c1a22" stroke-width="4.4" stroke-linecap="round"/><path d="M0 0C-8-11-22-9-22 0C-22 9-8 11 0 0Z" fill="#1c1a22"/><path d="M0 0C8-11 22-9 22 0C22 9 8 11 0 0Z" fill="#1c1a22"/><circle r="4.4" fill="#34323c"/><path d="M-16-3C-12-6-8-5-5-1M16-3C12-6 8-5 5-1" stroke="#fff" opacity=".3" fill="none" stroke-width="1.5" stroke-linecap="round"/></g>'+
         '</g>'+
         '<g class="zfx zfx-spark"><path d="M44 98l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#ffe27a"/><path d="M198 84l2.4 5.6 5.6 2.4-5.6 2.4-2.4 5.6-2.4-5.6-5.6-2.4 5.6-2.4z" fill="#fff3a6"/><path d="M190 168l2 4.4 4.4 2-4.4 2-2 4.4-2-4.4-4.4-2 4.4-2z" fill="#ffd1f0"/></g>'+
-        '<g class="zfx zfx-heart"><path d="M190 70c-8-6-12 3-6 7l6 5 6-5c6-4 2-13-6-7z" fill="#ff5c93"/><path d="M52 90c-6-4-9 2-4.5 5l4.5 3.6 4.5-3.6c4.5-3 1.5-9-4.5-5z" fill="#ff9ac0"/></g>'+
+        '<g class="zfx zfx-heart"><path d="M190 70c-8-6-12 3-6 7l6 5 6-5c6-4 2-13-6-7z" fill="#ff4f86"/><path d="M52 90c-6-4-9 2-4.5 5l4.5 3.6 4.5-3.6c4.5-3 1.5-9-4.5-5z" fill="#ff9ac0"/></g>'+
         '<g class="zfx zfx-lines"><path d="M72 150l5 4M78 148l5 4M84 146l5 4M156 146l5 4M162 148l5 4M168 150l5 4" stroke="#e8557d" stroke-width="2" stroke-linecap="round"/></g>'+
         '<g class="zfx zfx-sweat"><path d="M174 86c-6 9-8 13-3 17 5 3 9-2 7-7z" fill="#9fdcff" stroke="#5cb6e6" stroke-width="1.4"/></g>'+
-        '<g class="zfx zfx-q"><text x="184" y="70" font-size="30" font-weight="700" fill="#8d7bff" font-family="Arial,sans-serif">?</text></g>'+
-        '<g class="zfx zfx-bang"><text x="190" y="72" font-size="30" font-weight="700" fill="#ff7aa8" font-family="Arial,sans-serif">!</text></g>'+
-        '<g class="zfx zfx-z"><text x="178" y="76" font-size="16" font-weight="700" fill="#8d7bff" font-family="Arial,sans-serif">z</text><text x="190" y="60" font-size="22" font-weight="700" fill="#8d7bff" font-family="Arial,sans-serif">Z</text></g>'+
+        '<g class="zfx zfx-q"><text x="184" y="70" font-size="30" font-weight="700" fill="#c4416f" font-family="Arial,sans-serif">?</text></g>'+
+        '<g class="zfx zfx-bang"><text x="190" y="72" font-size="30" font-weight="700" fill="#ff5c8d" font-family="Arial,sans-serif">!</text></g>'+
+        '<g class="zfx zfx-z"><text x="178" y="76" font-size="16" font-weight="700" fill="#c4416f" font-family="Arial,sans-serif">z</text><text x="190" y="60" font-size="22" font-weight="700" fill="#c4416f" font-family="Arial,sans-serif">Z</text></g>'+
         '<g class="zfx zfx-tear"><path d="M84 148c-3 6-4 9-1 11 3 2 6-1 5-4z" fill="#9fdcff" opacity=".9"/></g>'+
       '</g></g>'+
-      '<g class="zorb"><circle cx="204" cy="196" r="15" fill="url(#zxCore)" opacity=".98"/><circle cx="204" cy="196" r="15" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="1.4"/><circle cx="199" cy="191" r="4.2" fill="#fff" opacity=".85"/><circle cx="204" cy="196" r="21" fill="none" stroke="#b48cff" stroke-opacity=".4" stroke-width="1.2"/></g>'+
+      /* her coffee cup floats beside her */
+      '<g class="zorb"><path d="M196 206c-3-8 4-10 3-16M205 206c-3-8 4-10 3-16" fill="none" stroke="#b9a9c9" stroke-width="2" stroke-linecap="round" opacity=".7"/><rect x="190" y="210" width="26" height="7" rx="3" fill="#f6efe9" stroke="#d9cdc4" stroke-width="1.2"/><path d="M192 217h22l-3.2 30h-15.6z" fill="#e2bd98"/><path d="M192.6 224h20.8l-.8 12h-19.2z" fill="#fff" opacity=".85"/><path d="M196 228l1.4-4 3 2.4h6l3-2.4 1.4 4c.8 2.8-.6 7-7.4 7s-8.2-4.2-7.4-7z" fill="#ffd8e4" stroke="#c4416f" stroke-width="1.1" stroke-linejoin="round"/><circle cx="200" cy="230" r="1.1" fill="#3a1426"/><circle cx="206" cy="230" r="1.1" fill="#3a1426"/></g>'+
     '</g></svg>'}
   const DEFS='<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>'+
-    '<linearGradient id="zxHair" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a49d8"/><stop offset=".42" stop-color="#8f58ee"/><stop offset=".78" stop-color="#ff86c8"/><stop offset="1" stop-color="#ffc6a2"/></linearGradient>'+
-    '<linearGradient id="zxIris" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#27d3e6"/><stop offset=".55" stop-color="#5a6cff"/><stop offset="1" stop-color="#8a4dff"/></linearGradient>'+
-    '<linearGradient id="zxHood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b3870"/><stop offset="1" stop-color="#22203f"/></linearGradient>'+
-    '<linearGradient id="zxRing" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7ff0d2"/><stop offset=".5" stop-color="#b48cff"/><stop offset="1" stop-color="#ff9ad0"/></linearGradient>'+
-    '<radialGradient id="zxCore" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff"/><stop offset=".35" stop-color="#ffb7e2"/><stop offset=".75" stop-color="#9a6cff"/><stop offset="1" stop-color="#5ad8e8"/></radialGradient>'+
+    '<linearGradient id="zxHair" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff7fa9"/><stop offset=".5" stop-color="#ff6b9a"/><stop offset="1" stop-color="#ffa3c0"/></linearGradient>'+
+    '<linearGradient id="zxIris" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff9db8"/><stop offset=".5" stop-color="#e8416f"/><stop offset="1" stop-color="#b3205a"/></linearGradient>'+
+    '<linearGradient id="zxTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2830"/><stop offset="1" stop-color="#16151b"/></linearGradient>'+
+    '<linearGradient id="zxCoat" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ebe4ec"/></linearGradient>'+
     '<clipPath id="zxClip"><ellipse rx="15.5" ry="19.5"/></clipPath></defs></svg>';
   return{svg,DEFS}})();
 </script>
 <style>
 .zx.still *{animation:none!important}
-.zmf{display:inline-block;width:34px;height:34px;border-radius:50%;overflow:hidden;flex:none;vertical-align:middle;position:relative;background:linear-gradient(160deg,#e6dcff,#ffd6ec);box-shadow:0 0 0 2px rgba(180,140,255,.55)}
+.zmf{display:inline-block;width:34px;height:34px;border-radius:50%;overflow:hidden;flex:none;vertical-align:middle;position:relative;background:linear-gradient(160deg,#ffe9f1,#ffd0e1);box-shadow:0 0 0 2px rgba(255,143,184,.6)}
 .zmf svg{width:100%;height:100%}
-.nav button.orbbtn .zmf{box-shadow:0 0 14px rgba(180,140,255,.6),0 0 0 2px rgba(255,255,255,.5)}
+.nav button.orbbtn .zmf{box-shadow:0 0 14px rgba(255,143,184,.65),0 0 0 2px rgba(255,255,255,.5)}
 .zsplash{width:190px;margin:0 auto}
 .zart{width:170px;margin-top:6px}
 .zrow2{display:flex;align-items:center;gap:8px}
@@ -6868,7 +7013,9 @@ const ZXART=(()=>{
 /* ================= ZXVI mascot controller: expressions, blinking, eye tracking, talking, pokes, voice ================= */
 const MASCOT=(()=>{
   (document.body||document.documentElement).insertAdjacentHTML('afterbegin',ZXART.DEFS);
-  const prefs=Object.assign({fab:true,voice:false,anim:true},store.get('mascot',{}));
+  const saved0=store.get('mascot',{});
+  const prefs=Object.assign({fab:true,voice:true,anim:true,rate:1,pitch:1.1,vname:'',vmap:{},mic:'en-IN'},saved0);
+  if(saved0.vv!==2){prefs.voice=true;prefs.vv=2}
   const savePrefs=()=>store.set('mascot',prefs);
   const rnd=a=>a[Math.floor(Math.random()*a.length)];
   const insts=new Set();
@@ -6903,7 +7050,7 @@ const MASCOT=(()=>{
   addEventListener('pointermove',onMove,{passive:true});addEventListener('touchstart',onMove,{passive:true});
 
   /* small static face for lists, buttons and the nav */
-  const mini=(px2,e)=>'<span class="zmf" style="width:'+px2+'px;height:'+px2+'px">'+ZXART.svg({vb:'44 22 152 168',still:true}).replace('data-e="idle"','data-e="'+(e||'idle')+'"')+'</span>';
+  const mini=(px2,e)=>'<span class="zmf" style="width:'+px2+'px;height:'+px2+'px">'+ZXART.svg({vb:'38 14 164 174',still:true}).replace('data-e="idle"','data-e="'+(e||'idle')+'"')+'</span>';
 
   /* ---------- turning a markdown reply into a short line the mascot can say ---------- */
   function plain(md,max){max=max||170;let t=String(md||'').replace(/^\s*\*[^*\n]{1,20}\*\s*/,'').replace(/```[\s\S]*?```/g,' ').replace(/`([^`]*)`/g,'$1').replace(/\*\*(.+?)\*\*/g,'$1').replace(/\*(.+?)\*/g,'$1').replace(/^#+\s*/gm,'').replace(/^\s*[-*]\s+/gm,'').replace(/\[([^\]]+)\]\([^)]*\)/g,'$1').replace(/\s+/g,' ').trim();
@@ -6924,52 +7071,84 @@ const MASCOT=(()=>{
 
   /* ---------- the stage: character + speech bubble ---------- */
   const synth=window.speechSynthesis&&window.SpeechSynthesisUtterance?window.speechSynthesis:null;
-  function speak(t){if(!prefs.voice||!synth)return;try{synth.cancel();const u=new SpeechSynthesisUtterance(t.replace(/[^\p{L}\p{N}\s.,!?'-]/gu,' '));u.pitch=1.3;u.rate=1.05;const v=synth.getVoices().filter(v=>/en/i.test(v.lang));const f=v.find(x=>/female|samantha|zira|google uk english female|aria|jenny/i.test(x.name));if(f)u.voice=f;synth.speak(u)}catch(e){}}
-  function stopSpeak(){try{synth&&synth.cancel()}catch(e){}}
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition||null;
+  let voiceList=[];
+  const loadVoices=()=>{try{voiceList=synth?synth.getVoices():[]}catch(e){voiceList=[]}return voiceList};
+  if(synth){loadVoices();try{synth.addEventListener('voiceschanged',loadVoices)}catch(e){try{synth.onvoiceschanged=loadVoices}catch(_){}}}
+  const langOf=v=>String(v.lang||'').replace('_','-').toLowerCase();
+  const voicesFor=base=>loadVoices().filter(v=>langOf(v).split('-')[0]===base);
+  const GOOD=/natural|neural|online|enhanced|premium/i,FEM=/female|samantha|zira|aria|jenny|libby|sonia|neerja|heera|veena|tessa|karen|moira|serena|susan|hazel|ava|allison|swara|kalpana|lekha|google uk english female|google us english/i;
+  const rankV=v=>{let s=0;if(GOOD.test(v.name))s+=6;if(/google/i.test(v.name))s+=3;if(FEM.test(v.name))s+=3;if(v.localService)s+=1;if(/^en-in/.test(langOf(v)))s+=2;else if(/^en-(us|gb)/.test(langOf(v)))s+=1;return s};
+  function pickVoice(base){const vs=voicesFor(base);if(!vs.length)return null;const want=base==='en'?prefs.vname:(prefs.vmap&&prefs.vmap[base]);if(want){const f=vs.find(v=>v.name===want);if(f)return f}return vs.slice().sort((a,b)=>rankV(b)-rankV(a))[0]}
+  /* what the voice should actually say: no markdown, no emoji, and ZXVI spelled out so it is not read as gibberish */
+  const tts=t=>String(t).replace(/\bZXVI\b/g,'Z X V I').replace(/\bOneAI\b/g,'One A I').replace(/https?:\/\/\S+/g,' link ').replace(/[`*_#>~|\\]/g,' ').replace(/[^\p{L}\p{M}\p{N}\s.,!?;:'’"()%+\-–—\/=×÷²³।؟。]/gu,' ').replace(/\s+/g,' ').trim();
+  const chunks=t=>{const s=t.match(/[^.!?।؟。]+[.!?।؟。]*\s*/g)||[t];const out=[];let c='';for(const x of s){if((c+x).length>190&&c){out.push(c.trim());c=x}else c+=x}if(c.trim())out.push(c.trim());return out.length?out:[t]};
+  let speakTok=0;
+  function speak(text,o){o=o||{};if(!synth)return false;if(!prefs.voice&&!o.force)return false;
+    const base=String(o.lang||'en').split('-')[0],v=pickVoice(base);if(!v&&base!=='en')return false;
+    const clean=tts(text);if(!clean)return false;
+    try{synth.cancel()}catch(e){}
+    const tok=++speakTok,parts=chunks(clean);let n=0,started=false;
+    const next=()=>{if(tok!==speakTok)return;if(n>=parts.length){if(o.onend)o.onend();return}
+      const u=new SpeechSynthesisUtterance(parts[n++]);u.lang=v?v.lang:(base==='en'?'en-IN':base);if(v)u.voice=v;u.rate=prefs.rate||1;u.pitch=prefs.pitch||1.1;u.volume=1;
+      u.onstart=()=>{if(!started){started=true;if(o.onstart)o.onstart()}};u.onend=next;u.onerror=()=>{if(tok===speakTok&&o.onend)o.onend()};
+      try{synth.speak(u)}catch(e){if(o.onend)o.onend()}};
+    setTimeout(next,40);return true}
+  function stopSpeak(){speakTok++;try{synth&&synth.cancel()}catch(e){}}
+  /* microphone: the browser's own speech recognition (Chrome and Edge send the audio to the browser maker's service, so it needs internet) */
+  function listen(o){if(!SR)return null;const r=new SR();r.lang=o.lang||prefs.mic||'en-IN';r.interimResults=true;r.continuous=false;r.maxAlternatives=1;let fin='',it='';
+    r.onstart=()=>{if(o.onState)o.onState('listening')};
+    r.onresult=e=>{fin='';it='';for(let i=0;i<e.results.length;i++){const t=e.results[i][0].transcript;if(e.results[i].isFinal)fin+=t;else it+=t}if(o.onInterim)o.onInterim((fin+it).trim())};
+    r.onerror=e=>{if(o.onError)o.onError(e.error||'error')};
+    r.onend=()=>{if(o.onState)o.onState('idle');if(o.onFinal)o.onFinal((fin||it).trim())};
+    try{r.start()}catch(e){if(o.onError)o.onError('start-failed');return null}
+    return{stop(){try{r.stop()}catch(e){}},abort(){try{r.abort()}catch(e){}}}}
 
   function stage(charHost,bubble){
     const C=make(charHost,{});let tw=0,lastPoke=0,pokes=0,idleT=0,asleep=false;
-    const type=(text,after)=>{clearInterval(tw);let i=0;bubble.textContent='';const tn=document.createTextNode(''),cur=document.createElement('span');cur.className='zcur';bubble.append(tn,cur);
-      C.talk();speak(text);
-      if(reduce){bubble.textContent=text;C.stopTalk();if(after)after();return}
+    let typing=false,speaking=false,spkT=0;
+    const fin=()=>{if(!typing&&!speaking)C.stopTalk()};
+    const type=(text,after,o)=>{o=o||{};clearInterval(tw);clearTimeout(spkT);let i=0;bubble.textContent='';const tn=document.createTextNode(''),cur=document.createElement('span');cur.className='zcur';bubble.append(tn,cur);
+      C.talk();typing=true;speaking=speak(text,{lang:o.lang,onend:()=>{speaking=false;fin()}});
+      if(speaking)spkT=setTimeout(()=>{speaking=false;fin()},Math.max(4000,text.length*95/(prefs.rate||1)+2500));
+      if(reduce){bubble.textContent=text;typing=false;fin();if(after)after();return}
       const k=text.length>140?2:1,step=Math.max(14,Math.min(34,2600/Math.max(1,text.length)));
-      tw=setInterval(()=>{i=Math.min(text.length,i+k);tn.nodeValue=text.slice(0,i);bubble.scrollTop=bubble.scrollHeight;if(i>=text.length){clearInterval(tw);cur.remove();C.stopTalk();if(after)after()}},step)};
-    const say=(text,e,ms)=>{wake();if(e)C.emote(e,ms||Math.min(9000,2200+text.length*45));type(text);rearm()};
+      tw=setInterval(()=>{i=Math.min(text.length,i+k);tn.nodeValue=text.slice(0,i);bubble.scrollTop=bubble.scrollHeight;if(i>=text.length){clearInterval(tw);cur.remove();typing=false;fin();if(after)after()}},step)};
+    const say=(text,e,ms,o)=>{wake();if(e)C.emote(e,ms||Math.min(9000,2200+text.length*45));type(text,null,o);rearm()};
     const mood=e=>{C.setBase(e)};
     /* sleepy when left alone */
     const rearm=()=>{clearTimeout(idleT);if(prefs.anim&&!reduce)idleT=setTimeout(()=>{if(!charHost.isConnected)return;asleep=true;C.stopTalk();C.setBase('sleepy');bubble.textContent='…zzz'},80000)};
     const wake=()=>{if(asleep){asleep=false;C.setBase('idle')}};
-    const POKES=[
-      ['surprised','hop','Eep! You found me.'],['happy','hop','Hi hi! I\'m ZXVI. Tap me anytime.'],['wink','tilt','Psst… I can calculate, convert, translate and more.'],
-      ['proud','hop','I live right inside your browser. No internet needed!'],['think','tilt','Hmm? Need something? Just type it below.'],['love','hop','Aww, thank you for visiting!'],['joy','hop','Yay! Let\'s get something done today.']];
+    const POKES=[['surprised','hop','p1'],['happy','hop','p2'],['wink','tilt','p3'],['proud','hop','p4'],['think','tilt','p5'],['love','hop','p6'],['joy','hop','p7']];
+    const L=()=>({lang:I18N.cur});
     const poke=()=>{wake();const now=Date.now();pokes=now-lastPoke<1500?pokes+1:1;lastPoke=now;
-      if(pokes>=5){pokes=0;C.emote('flustered',2200);C.act('shake',500);say('H-hey! That tickles. Okay okay, one tap at a time please!','flustered',2400);return}
-      const p=rnd(POKES);C.act(p[1],600);say(p[2].replace('ZXVI',BRAIN.mem.bot||'ZXVI'),p[0],2600)};
+      if(pokes>=5){pokes=0;C.emote('flustered',2200);C.act('shake',500);say(tx('pf'),'flustered',2400,L());return}
+      const p=rnd(POKES);C.act(p[1],600);say(tx(p[2],{bot:BRAIN.mem.bot||'ZXVI'}),p[0],2600,L())};
     charHost.addEventListener('click',poke);
     charHost.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();poke()}});
     /* random idle life */
     const life=setInterval(()=>{if(!charHost.isConnected){clearInterval(life);C.destroy();return}if(!prefs.anim||reduce||document.hidden||asleep||C.talking)return;
       const r=Math.random();if(r<.35){C.look((Math.random()-.5)*8,(Math.random()-.5)*5);setTimeout(()=>C.look(0,0),900)}else if(r<.55){C.act('tilt',1400)}else if(r<.65){C.emote('wink',700)}},6500);
     rearm();
-    return{C,say,mood,type,stop(){clearInterval(tw);C.stopTalk();stopSpeak()},poke,wake}}
+    return{C,say,mood,type,stop(){clearInterval(tw);clearTimeout(spkT);typing=false;speaking=false;C.stopTalk();stopSpeak()},poke,wake}}
 
   /* ---------- floating button + popover on every page except the splash and the assistant ---------- */
   const TIPS=[
-    'Type something like “18% of 2500” in the chat. I do the maths.','Every tool here works offline. Nothing you open is uploaded.','The PDF tools can merge, split, translate and turn images into PDFs, all on your device.',
+    'Type something like “18% of 2500” in the chat. I do the maths.','Every tool here works offline. Nothing you open is uploaded.','The PDF tools can translate a PDF, turn photos into a PDF, pull out the text, and save pages as pictures, all on your device.',
     'Ask me “10 km to miles” or “convert 5 kg to pounds”.','Say “remember that my exam is on Friday” and I will keep it on this device only.','Try “write a leave application” for a quick letter template.',
     'Ask me “capital of Japan” or “translate thank you to Malayalam”.','You can save your favourite tools with the heart so they show up on Home.','Press the up arrow in the chat box to bring back your last question.',
-    'Try “days until Christmas” or “what day is 15 August 2030”.','Not sure which tool you need? Describe the job and I will search all of them.','Dark mode and lots of colour themes live in Settings.'];
+    'Try “days until Christmas” or “what day is 15 August 2030”.','Not sure which tool you need? Ask me “which tool makes a PDF?” or describe the job and I will find it.','Dark mode and lots of colour themes live in Settings.'];
   let fabEl=null,pop=null,popStage=null,popOpen=false;
   function buildFab(){
     if(fabEl)return;
-    fabEl=document.createElement('button');fabEl.id='zfab';fabEl.type='button';fabEl.setAttribute('aria-label','Open the ZXVI mascot');fabEl.hidden=true;
-    fabEl.innerHTML=ZXART.svg({vb:'44 22 152 168',still:true})+'<span class="dotn"></span>';
+    fabEl=document.createElement('button');fabEl.id='zfab';fabEl.type='button';fabEl.setAttribute('aria-label',tx('fab'));fabEl.hidden=true;
+    fabEl.innerHTML=ZXART.svg({vb:'38 14 164 174',still:true})+'<span class="dotn"></span>';
     document.body.appendChild(fabEl);
-    pop=document.createElement('div');pop.id='zpop';pop.hidden=true;pop.setAttribute('role','dialog');pop.setAttribute('aria-label','ZXVI mascot');
-    pop.innerHTML='<div class="zrow"><div class="zchar" role="button" tabindex="0" aria-label="Tap ZXVI"></div><div class="zbubble"></div></div>'+
-      '<div class="zbtns"><button class="btn sm pri" data-a="chat">Chat with me</button><button class="btn sm" data-a="tip">Tip</button><button class="btn sm" data-a="surprise">Surprise me</button><button class="btn sm" data-a="hide">Hide me</button></div>'+
-      '<div class="row" style="gap:8px;flex-wrap:nowrap"><input id="zq" type="text" placeholder="Ask me anything" aria-label="Ask ZXVI" style="flex:1;min-width:0;border:0;background:var(--field);color:var(--ink);border-radius:999px;padding:11px 14px;font:inherit"><button class="btn sm pri" data-a="send">Ask</button></div>'+
-      '<button class="zcirc zx2" data-a="close" aria-label="Close">×</button>';
+    pop=document.createElement('div');pop.id='zpop';pop.hidden=true;pop.setAttribute('role','dialog');pop.setAttribute('aria-label','ZXVI');pop.dir=I18N.rtl()?'rtl':'ltr';
+    pop.innerHTML='<div class="zrow"><div class="zchar" role="button" tabindex="0" aria-label="ZXVI"></div><div class="zbubble"></div></div>'+
+      '<div class="zbtns"><button class="btn sm pri" data-a="chat">'+esc(tx('chat'))+'</button><button class="btn sm" data-a="tip">'+esc(tx('tip'))+'</button><button class="btn sm" data-a="surprise">'+esc(tx('surprise'))+'</button><button class="btn sm" data-a="hide">'+esc(tx('hide'))+'</button></div>'+
+      '<div class="row" style="gap:8px;flex-wrap:nowrap"><input id="zq" type="text" placeholder="'+esc(tx('askme'))+'" aria-label="'+esc(tx('ask'))+'" style="flex:1;min-width:0;border:0;background:var(--field);color:var(--ink);border-radius:999px;padding:11px 14px;font:inherit"><button class="btn sm pri" data-a="send">'+esc(tx('ask'))+'</button></div>'+
+      '<button class="zcirc zx2" data-a="close" aria-label="'+esc(tx('close'))+'">×</button>';
     document.body.appendChild(pop);
     popStage=stage(pop.querySelector('.zchar'),pop.querySelector('.zbubble'));
     /* the button can be dragged out of the way; it remembers where you put it */
@@ -6987,21 +7166,23 @@ const MASCOT=(()=>{
       if(a==='close')togglePop(false);
       else if(a==='chat'){togglePop(false);go('assistant')}
       else if(a==='send')ask();
-      else if(a==='tip'){popStage.say(rnd(TIPS),'happy',2500)}
-      else if(a==='surprise'){const t=rnd(TOOLS);popStage.say('How about '+t.name+'? '+t.desc,'joy',3000);popStage.C.act('hop');
+      else if(a==='tip'){popStage.say(rnd(TIPS),'happy',2500,{lang:'en'})}
+      else if(a==='surprise'){const t=rnd(TOOLS);popStage.say('How about '+t.name+'? '+t.desc,'joy',3000,{lang:'en'});popStage.C.act('hop');
         let o=pop.querySelector('.zopen');if(!o){o=document.createElement('button');o.className='btn sm zopen';pop.querySelector('.zbtns').appendChild(o)}o.textContent='Open '+t.name;o.onclick=()=>{togglePop(false);go(t.id)}}
       else if(a==='hide'){prefs.fab=false;savePrefs();togglePop(false);syncFab();toast('Mascot hidden. Bring it back in Settings.')}};
     pop.querySelector('#zq').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();ask()}else if(e.key==='Escape')togglePop(false)};
     addEventListener('keydown',e=>{if(e.key==='Escape'&&popOpen)togglePop(false)})}
   function placePop(){const f=fabEl.getBoundingClientRect(),w=Math.min(340,innerWidth-28);pop.style.width=w+'px';pop.style.right='auto';pop.style.bottom='auto';
     const ph=pop.offsetHeight||240;let L=f.right-w;L=Math.min(innerWidth-w-14,Math.max(14,L));let T=f.top-ph-10;if(T<10)T=Math.min(innerHeight-ph-10,f.bottom+10);pop.style.left=L+'px';pop.style.top=Math.max(10,T)+'px'}
-  function togglePop(on){popOpen=on===undefined?!popOpen:on;pop.hidden=!popOpen;if(popOpen)placePop();fabEl.setAttribute('aria-expanded',popOpen);if(popOpen){const d=fabEl.querySelector('.dotn');if(d)d.remove();popStage.wake();popStage.C.emote('happy');popStage.say(greetLine(),'happy',2200);popStage.C.act('hop')}else{popStage.stop()}}
-  function greetLine(){const h=new Date().getHours(),n=BRAIN.mem.user;const p=h<5?'Still up':h<12?'Good morning':h<17?'Good afternoon':h<22?'Good evening':'Late night';return p+(n?', '+n:'')+'! What can I do for you?'}
+  function togglePop(on){popOpen=on===undefined?!popOpen:on;pop.hidden=!popOpen;if(popOpen)placePop();fabEl.setAttribute('aria-expanded',popOpen);if(popOpen){const d=fabEl.querySelector('.dotn');if(d)d.remove();popStage.wake();popStage.C.emote('happy');popStage.say(greetLine(),'happy',2200,{lang:I18N.cur});popStage.C.act('hop')}else{popStage.stop()}}
+  function greetLine(){const h=new Date().getHours(),n=BRAIN.mem.user;const p=h<5||h>=22?tx('gh'):h<12?tx('gm'):h<17?tx('ga'):tx('ge');return p+(n?', '+n:'')+'! '+tx('wcd')}
+  /* rebuild the floating button after the interface language changes */
+  function relang(){if(popStage)popStage.stop();if(fabEl){fabEl.remove();fabEl=null}if(pop){pop.remove();pop=null}popStage=null;popOpen=false;if(document.body)syncFab()}
   let curView='';
   function syncFab(){buildFab();const show=prefs.fab&&curView&&curView!=='splash'&&curView!=='assistant';fabEl.hidden=!show;if(!show&&popOpen)togglePop(false)}
   function route(v){curView=v;if(v!=='assistant')stopSpeak();if(document.body)syncFab()}
 
-  return{make,mini,stage,plain,moodOf,prefs,savePrefs,route,syncFab,speak,stopSpeak,hasVoice:!!synth,TIPS,rnd,reduce,
+  return{make,mini,stage,plain,moodOf,prefs,savePrefs,route,syncFab,speak,stopSpeak,listen,relang,pickVoice,voicesFor,loadVoices,hasVoice:!!synth,hasMic:!!SR,TIPS,rnd,reduce,
     art:(cls)=>'<div class="'+cls+'">'+ZXART.svg({})+'</div>'}
 })();
 </script>
@@ -8256,6 +8437,7 @@ function findPhrase(x){let t=nrm(x).replace(/^(?:the )?(?:word |phrase |sentence
   if(t.length>=6){let best=null,bd=9;for(const[k,p]of PHR)for(const a of p.a){const d=lev(t,a.replace(/'/g,''));if(d<=Math.min(2,Math.floor(a.length/5))&&d<bd){bd=d;best=[k,p]}}return best}return null}
 const fmtT=(l,v)=>v[1]?'**'+v[0]+'** (*'+v[1]+'*)':'**'+v[0]+'**';
 B.addSkill('phrase','Phrase translator',['translate thank you to Malayalam','how to say good morning in Hindi','I love you in Tamil'],(q,raw)=>{
+  if(/\b(?:pdf|pdfs|document|documents|file|files|website|web page|webpage|docx?)\b/.test(q))return null;
   let m,ph,lg;const L=kdl=>KDATA.langs[kdl]||null;
   const langRe='('+Object.keys(KDATA.langs).concat(OTHERLANG).concat(['all(?: the)?(?: indian)?(?: languages)?','every language','different languages','all languages']).join('|')+')\\b';
   m=q.match(new RegExp('^(?:please )?(?:translate|say|write|tell me)\\s+(.+?)\\s+(?:in|to|into|in to)\\s+'+langRe+'(?: language| please)?\\s*\\??$'))||
@@ -8290,6 +8472,8 @@ B.addSkill('letters','Letter templates',['write a leave application','resignatio
   if(!ask||/^(?:what|why|who|when|define|explain|meaning)\b/.test(q))return null;
   for(const[k,t]of Object.entries(KDATA.templates))if(t.alias.some(a=>q.includes(a)))
     return R('Here is a **'+k+'** you can fill in. Replace the [brackets]:\n\n```\n'+t.body+'\n```',{copy:t.body,mood:'proud'});
+  if(/\b(?:email|mail|letter)\b/.test(q)){const g='Subject: [Subject]\n\nDear [Name],\n\nI hope you are well. I am writing to [reason].\n\n[Details: dates, numbers or what you need]\n\nThank you for your time. I look forward to your reply.\n\nRegards,\n[Your name]\n[Phone or email]';
+    return R('Here is a general **email** you can fill in. Replace the [brackets]:\n\n```\n'+g+'\n```\n\nTo change its tone (formal, friendly or firm), paste it into EmailTone.',{copy:g,mood:'proud',acts:[{label:'Open EmailTone',go:'emailtone'}]})}
   return null},'datetime');
 
 /* ---------- 6. text tricks ---------- */
@@ -8461,6 +8645,324 @@ B.hooks.pre.push(async(q,raw)=>{
 })();
 </script>
 <script>
+/* ================= ZXVI tool finder: understands what the person wants to DO and points to the right tool ================= */
+(()=>{
+const B=BRAIN,R=B.R,N=B.N;
+/* ---------- words -> a shared vocabulary so "shrink a photo" matches "Image Compressor" ---------- */
+const CANON={};
+const grp=(c,list)=>list.split(' ').forEach(w=>CANON[w]=c);
+grp('image','photo photos picture pictures pic pics img imgs jpg jpeg png webp heic gif screenshot screenshots snapshot image images');
+grp('make','make create generate build produce prepare design');
+grp('convert','convert change turn transform switch export');
+grp('compress','shrink reduce compress compression smaller minimize minimise optimize optimise lighter');
+grp('merge','merge combine join unite concatenate stitch');
+grp('split','split separate divide slice');
+grp('calculate','calculate calculator compute');
+grp('debug','debug fix repair troubleshoot');
+grp('loan','loan emi mortgage installment');
+grp('quiz','quiz mcq questions');
+grp('password','password passwords passphrase');
+grp('speak','speak speech voice audio aloud');
+grp('resume','resume cv');
+grp('text','text txt word words');
+grp('doc','doc docx document documents');
+grp('sheet','excel spreadsheet sheet xlsx');
+grp('date','date dates day days');
+grp('money','money cash rupee rupees dollar dollars price cost');
+const SW=new Set(Array.from(B.STOP).concat('tool tools app apps feature features option options help way ways best easiest fastest easy online free offline please thing things something anything use using used one two a an'.split(' ')));
+const stem=w=>{if(w.length>5&&/ing$/.test(w))return w.slice(0,-3);if(w.length>4&&/ies$/.test(w))return w.slice(0,-3)+'y';if(w.length>4&&/(sses|xes|ches|shes)$/.test(w))return w.slice(0,-2);if(w.length>4&&/ed$/.test(w))return w.slice(0,-2);if(w.length>3&&/s$/.test(w)&&!/(ss|us|is)$/.test(w))return w.slice(0,-1);return w};
+const tok=(s,keepStop)=>(String(s).toLowerCase().match(/[a-z0-9+#]+/g)||[]).filter(w=>keepStop||!SW.has(w)).map(w=>{const c=CANON[w]||CANON[stem(w)];return c||stem(w)}).filter(w=>w.length>1||/\d/.test(w));
+
+/* ---------- extra "what people ask for" phrases for each tool ---------- */
+const INT={
+'image-to-pdf':'make pdf from photos|create pdf from images|jpg to pdf|png to pdf|scan to pdf|screenshots to pdf|combine images into pdf|merge images into one pdf|photos to pdf|save photos as pdf',
+'pdf-to-text':'extract text from pdf|copy text from pdf|pdf to text|read pdf text|pdf to word|edit pdf text|pdf to txt',
+'pdf-to-images':'pdf to jpg|pdf to png|pdf to image|pdf pages as pictures|save pdf page as image|slides to images|pdf page to photo',
+'pdf-translator':'translate pdf|pdf translation|change language of pdf|pdf in another language|translate document',
+'image-compressor':'compress image|reduce photo size|make image smaller|shrink jpg|reduce file size of picture|image too big|optimize photo|reduce mb of photo',
+'image-resizer':'resize image|change image size|change image dimensions|convert png to jpg|jpg to png|png to webp|convert image format|scale photo|make photo bigger|passport size photo|change photo format',
+'image-filters':'rotate image|flip photo|black and white photo|grayscale|sepia|edit photo|photo filter|brighten photo|mirror image|invert colors',
+'face-blur':'blur faces|hide face in photo|anonymize photo|privacy blur|pixelate face|blur face',
+'qr-generator':'make qr code|create qr|generate qr|wifi qr code|qr for link|qr for whatsapp|upi qr|vcard qr|qr code maker',
+'qr-scanner':'scan qr code|read qr code|qr from photo|decode qr|qr reader',
+'barcode-generator':'make barcode|create barcode|generate barcode|ean 13|code 128|barcode maker',
+'password-generator':'make a password|generate strong password|random password|create secure password',
+'password-strength':'is my password strong|check password strength|test password|password safe',
+'passphrase-generator':'memorable password|passphrase|diceware|easy to remember password',
+'aes-encrypt':'encrypt text|encrypt a message|lock a message with a password|decrypt text|secret message|encryption',
+'hash-generator':'md5 hash|sha256|hash text|checksum of text|sha1',
+'file-hash':'verify download|file checksum|compare file hash|hash of a file|check file integrity',
+'word-counter':'count words|word count|character count|how many words|reading time|count characters|count sentences',
+'case-converter':'uppercase|lowercase|title case|camel case|snake case|change text case|capitalize text|capital letters',
+'text-diff':'compare two texts|find differences between texts|diff|compare documents',
+'find-replace':'replace text|find and replace|regex replace|bulk replace',
+'dedupe-lines':'remove duplicate lines|delete duplicates in list|unique lines|remove repeated lines',
+'sort-lines':'sort lines|alphabetical order list|sort list|arrange alphabetically',
+'lorem-ipsum':'dummy text|placeholder text|lorem ipsum|filler text|sample paragraph',
+'slug-generator':'url slug|seo friendly url|make slug|permalink',
+'json-format':'format json|pretty print json|validate json|fix json|beautify json|check json',
+'json-minify':'minify json|compress json',
+'csv-json':'csv to json|convert csv to json|spreadsheet to json',
+'json-csv':'json to csv|convert json to csv|json to excel',
+'json-yaml':'json to yaml|convert to yaml',
+'base64':'base64 encode|base64 decode|encode text base64',
+'url-encode':'encode url|decode url|percent encoding|url encoder',
+'uuid-generator':'make uuid|generate guid|unique id|random id',
+'regex-tester':'test regex|regular expression|regex match|regex checker',
+'color-converter':'hex to rgb|rgb to hex|convert colour|color code|hsl',
+'palette-generator':'color palette|colour scheme|matching colors|colour combination',
+'contrast-checker':'check color contrast|accessibility contrast|wcag|text readable on background',
+'css-gradient':'css gradient|gradient background|make gradient',
+'box-shadow':'css shadow|box shadow|drop shadow',
+'sql-format':'format sql|beautify sql|clean sql',
+'xml-format':'format xml|validate xml|indent xml',
+'timestamp':'unix time|epoch|timestamp to date|date to timestamp',
+'cron-explainer':'cron schedule|explain cron|cron job time',
+'age-calculator':'calculate age|how old am i|date of birth|birthday|next birthday',
+'date-difference':'days between dates|difference between two dates|how many days between|time between dates',
+'days-until':'days until|countdown to date|how many days left|days left for exam',
+'add-to-date':'add days to date|date after days|subtract days from date|date after 90 days',
+'workdays':'working days|business days|weekdays between|count weekdays',
+'calendar':'print calendar|monthly calendar|show calendar',
+'timezone-converter':'convert time zone|meeting time in another country|time difference between cities|time zone',
+'world-clock':'time in other countries|world time|current time in city',
+'calculator':'calculate|math expression|scientific calculator|solve sum|arithmetic',
+'percentage':'calculate percentage|percent of|what percent|percentage of a number',
+'percent-change':'percentage increase|percentage decrease|percent change|growth percentage',
+'statistics':'mean median mode|average of numbers|standard deviation|find average',
+'quadratic':'solve quadratic|quadratic equation|roots of equation',
+'linear-system':'solve simultaneous equations|two equations|system of equations',
+'matrix':'matrix determinant|matrix inverse|transpose',
+'fraction-calculator':'add fractions|fraction arithmetic|multiply fractions',
+'gst-vat':'add gst|remove gst|calculate gst|vat calculator|tax on price|inclusive of tax',
+'emi-calculator':'loan emi|home loan|car loan|monthly installment|loan payment|education loan',
+'compound-interest':'compound interest|savings growth|fd maturity|interest on deposit',
+'simple-interest':'simple interest',
+'sip-calculator':'sip returns|mutual fund sip|monthly investment|invest every month',
+'roi-cagr':'return on investment|cagr|growth rate|investment return',
+'discount-calculator':'sale price|discount percent|price after discount|offer price',
+'tip-calculator':'tip|split bill|restaurant bill|share the bill',
+'group-split':'split trip expenses|share expenses|who owes whom|roommate expenses|settle up|flatmates expenses',
+'salary-converter':'hourly to monthly salary|annual salary|ctc to monthly|monthly to yearly pay',
+'bmi':'body mass index|am i overweight|check my weight|bmi',
+'calorie-calculator':'daily calories|maintenance calories|bmr|how many calories do i need',
+'water-intake':'how much water should i drink|daily water',
+'sleep-calculator':'when should i sleep|best wake up time|sleep cycles|bedtime',
+'pace-calculator':'running pace|marathon time|5k time|race time',
+'study-planner':'study plan|exam timetable|revision schedule|study schedule|plan my studies',
+'question-generator':'make questions|create quiz questions|mcq from notes|exam questions|question paper',
+'quizforge':'make a quiz|quiz from notes|practice test|mock test',
+'flashcard-generator':'make flashcards|revision cards|memorise notes',
+'grammar-checker':'check grammar|spell check|proofread|fix spelling|correct my english|grammar mistakes',
+'code-explainer':'explain code|what does this code do|understand code|code meaning',
+'code-error-finder':'find bug|debug code|fix errors in code|why is my code not working|syntax error',
+'resumecraft':'make a resume|improve resume|tailor cv|ats resume|resume for job|match resume to job',
+'emailtone':'rewrite email|make email polite|formal email|email tone|reply to email',
+'taskgenie':'to do list from text|plan my tasks|organize tasks|plan my day|split work into tasks',
+'todo-list':'to do list|checklist|task list|things to do',
+'quick-notes':'take notes|write notes|notepad|scratchpad|jot down',
+'traveltwin':'plan a trip|travel itinerary|holiday plan|trip budget|vacation plan',
+'receiptlens':'track expenses|scan receipt|categorize spending|expense report|bill to data',
+'invoice-extractor':'extract invoice data|read invoice|invoice to excel|invoice to csv|invoice details',
+'duplicate-finder':'find duplicate files|same photos|clean storage|remove duplicate photos|free up space',
+'object-counter':'count objects in photo|count coins|count people in photo|count items in picture',
+'plantdoc':'plant disease|sick plant|leaf problem|crop disease',
+'moodmuse':'songs for my mood|how am i feeling|mood',
+'flashtalk':'practice speaking|debate practice|english speaking practice|speaking practice',
+'text-to-speech':'read text aloud|text to speech|make audio from text|speak text|listen to text',
+'speech-to-text':'voice typing|dictation|transcribe speech|speech to text|convert voice to text',
+'metronome':'tempo|bpm|keep the beat',
+'tone-generator':'play frequency|hz tone|sound frequency',
+'drawing-pad':'draw|sketch|paint|doodle',
+'sudoku':'play sudoku|solve sudoku',
+'word-search-solver':'solve word search|find words in grid',
+'maze':'make a maze|maze puzzle',
+'dice-roller':'roll dice|roll a die',
+'coin-flip':'flip a coin|heads or tails|toss a coin',
+'random-picker':'pick a winner|draw a name|raffle|choose a name',
+'spin-wheel':'spin the wheel|make a decision|choose for me',
+'team-splitter':'make teams|divide into groups|split into teams',
+'random-number':'random number|pick a number',
+'typing-test':'typing speed|words per minute|test my typing',
+'pomodoro':'study timer|focus timer|pomodoro',
+'countdown-timer':'set a timer|countdown|alarm|cooking timer',
+'stopwatch':'stopwatch|lap time|time myself',
+'html-preview':'run html|test html code|live preview html|try html css',
+'markdown-preview':'preview markdown|write markdown|markdown to html',
+'emoji-picker':'emoji|emoticons|smileys',
+'fancy-text':'fancy fonts|stylish text|instagram bio font|bold italic text|cool text',
+'morse':'morse code|dots and dashes',
+'caesar':'caesar cipher|rot13|shift cipher',
+'cipher-suite':'vigenere|atbash|rail fence|secret code',
+'invisible-text':'hide secret message in text|invisible characters|zero width',
+'ascii-art':'image to ascii|picture to text art|photo to ascii',
+'image-to-base64':'image to base64|base64 to image|data uri',
+'image-color-picker':'pick color from image|get colour from photo|eyedropper|colour of a pixel',
+'colorblind-sim':'colour blindness|how colorblind people see|colour blind test',
+'bionic-reader':'read faster|bionic reading|dyslexia reading|speed reading',
+'readability':'readability score|reading level|how easy is my writing|grade level',
+'temperature':'celsius to fahrenheit|convert temperature|kelvin',
+'length':'km to miles|feet to meters|convert length|distance units|inches to cm',
+'mass':'kg to pounds|convert weight|grams to ounces',
+'number-words':'number in words|write amount in words|cheque amount in words|figures to words',
+'roman-numerals':'roman numerals|roman number',
+'number-bases':'binary to decimal|hex to decimal|convert base|decimal to binary',
+'text-binary':'text to binary|binary to text|text to hex',
+'data-size':'mb to gb|bytes to kb|file size units|storage units',
+'fuel-economy':'mileage|km per litre|mpg|fuel efficiency',
+'fuel-cost':'trip cost|petrol cost for journey|fuel for a trip',
+'unit-price':'which pack is cheaper|better deal|price per gram',
+'value-comparator':'compare prices|best value product|which is cheaper|best buy',
+'household-stock':'grocery inventory|home stock|pantry|groceries running out',
+'obligation-tracker':'vehicle service reminder|insurance renewal reminder|renewal dates|bike service',
+'borrow-tracker':'lent money tracker|who borrowed my|things i lent|lend and borrow',
+'appliance-cost':'electricity cost of appliance|power bill estimate|ac running cost',
+'screenshot-captioner':'caption screenshots|label screenshots|number screenshots',
+'version-name-builder':'file naming|rename files neatly|final final v2 names',
+'handover-packager':'package project files|zip project|project handover',
+'formfill-prep':'clean list of names and emails|prepare data for forms',
+'parking-finder':'find parking space|empty parking slot',
+'tiny-change-log':'what changed between versions|change log|compare versions'
+};
+/* ---------- index every tool ---------- */
+let IDX=null;
+function build(){
+  const docs=TOOLS.map(t=>{const m=new Map();const add=(txt,w)=>tok(txt).forEach(x=>{if((m.get(x)||0)<w)m.set(x,w)});
+    add(t.cat,.25);add(t.desc,.45);add(t.kw||'',.8);add(t.name.replace(/[&⇄]/g,' '),1);
+    const ph=(INT[t.id]||'').split('|').filter(Boolean).map(p=>tok(p));ph.forEach(p=>p.forEach(x=>{if((m.get(x)||0)<1)m.set(x,1)}));
+    return{t,m,ph,name:tok(t.name.replace(/[&⇄]/g,' '))}});
+  const df=new Map();docs.forEach(d=>d.m.forEach((_,k)=>df.set(k,(df.get(k)||0)+1)));
+  const idf=w=>Math.log(1+docs.length/(1+(df.get(w)||0)));
+  IDX={docs,df,idf}}
+const ACT=new Set(['make','convert','compress','merge','split']);
+function rank(q){
+  if(!IDX)build();const{docs,idf}=IDX;
+  const Q=Array.from(new Set(tok(q)));if(!Q.length)return[];
+  const qs=new Set(Q);
+  const out=docs.map(d=>{let s=0,tot=0,hit=0;
+    for(const w of Q){const wi=idf(w)*(ACT.has(w)?.5:1);tot+=wi;let wt=d.m.get(w)||0;
+      if(!wt&&w.length>=5){for(const[k,v]of d.m){if(k.length>=5&&(k.startsWith(w)||w.startsWith(k)||B.lev(k,w)<=1)){wt=Math.max(wt,v*.8)}}}
+      if(wt){s+=wi*wt;hit++}}
+    /* a whole asked-for phrase present: strong signal */
+    let bonus=0;for(const p of d.ph){if(p.length&&p.every(x=>qs.has(x))){bonus=Math.max(bonus,p.reduce((a,x)=>a+idf(x),0)*(p.length>1?1:.7))}}
+    /* name words present */
+    const nm=d.name.filter(x=>qs.has(x)).length;if(nm&&d.name.length)s+=idf(d.name[0])*.3*nm/d.name.length;
+    if(d.name.length&&d.name.every(x=>qs.has(x)))s+=d.name.reduce((a,x)=>a+idf(x),0)*.8;
+    const cover=tot?s/tot:0;
+    return{t:d.t,s:s+bonus*1.3,cover:cover+(bonus?.5:0),hit,bonus}});
+  const qn=Q.join('-'),raw=N(q).replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  out.forEach(x=>{if(x.t.id===raw||x.t.id===qn||x.t.name.toLowerCase()===N(q))x.s+=1000});
+  return out.filter(x=>x.hit&&x.cover>=.45).sort((a,b)=>b.s-a.s)}
+function find(q,k){k=k||3;const r=rank(q);if(!r.length)return[];const top=r[0].s;return r.filter(x=>x.s>=top*.62).slice(0,k).map(x=>x.t)}
+/* let the router's own fallback use the better finder */
+
+
+/* ---------- precise answers for the things people ask about most (PDF first) ---------- */
+const IMG='(?:image|photo|picture|pic|jpe?g|png|webp|screenshot|scan)s?';
+const tl=id=>BYID[id];
+const KB=[
+ {re:/\btranslat\w*\b.*\bpdf|\bpdf\b.*\btranslat|(?:change|convert)\b.*\blanguage\b.*\b(?:pdf|document)/,ids:['pdf-translator'],
+  say:'For translating a PDF, use **PDF Translator**. It reads the text, translates it on your device with your browser\'s built-in translator, lets you fix any line, and builds a new PDF (translation only, or original and translation together).'},
+ {re:/\b(?:merge|combine|join|append|concatenate|unite|stitch|put)\b.*\bpdfs?\b.*|\bpdfs?\b.*\b(?:merge|combine|join|together|into one)\b/,ids:['pdf-to-images','image-to-pdf'],
+  say:'I don\'t have a one-click PDF merger yet, but you can do it in two steps. First open **PDF to Images** and turn each PDF into pictures. Then add all those pictures, in the order you want, to **Image to PDF** and download one combined PDF. The pages become pictures, so the text will not be selectable.'},
+ {re:/(?=.*\bpdf)(?=.*\b(?:split|separate|divide|extract|remove|delete|drop|reorder|rearrange|rotate|cut|pick|select|only)\b)(?=.*\b(?:pages?|slides?)\b)|\b(?:split|rotate|reorder|rearrange)\b.*\bpdfs?\b/,ids:['pdf-to-images','image-to-pdf'],
+  say:'There is no dedicated PDF page editor yet, but this works. Open **PDF to Images** and pick just the pages you want. Then add those pictures to **Image to PDF**, where you can reorder them and rotate sideways ones, and download the new PDF. The pages become pictures, so the text will not be selectable.'},
+ {re:/(?=.*\bpdfs?\b)(?=.*\b(?:compress|reduce|shrink|smaller|lower|optimi[sz]e|resize|too big|too large|large size|mb)\b)|\b(?:compress|reduce|shrink)\b.*\bpdf/,ids:['pdf-to-images','image-to-pdf'],
+  say:'To make a PDF smaller, open **PDF to Images** (choose JPG and a lower sharpness), then put those pictures into **Image to PDF** and choose a lower quality before you download. It works well for scans and slides. The text becomes part of the picture, so it will not be selectable.'},
+ {re:/(?=.*\bpdf)(?=.*\b(?:password|protect|encrypt|lock|unlock|decrypt|sign|signature|watermark|annotate|highlight|fill|stamp|redact|ocr|edit|crop|number)\b)/,ids:['pdf-to-text','pdf-to-images'],
+  say:'That one is not in the toolkit yet: I can\'t lock, unlock, sign, watermark, fill or directly edit a PDF. The closest help is **PDF to Text**, which pulls the text out so you can edit it elsewhere, and **PDF to Images**, which turns pages into pictures you can mark up.'},
+ {re:/\b(?:pdf)\b.*\b(?:to|into|as)\b.*\b(?:text|txt|word|docx?|editable|copy)\b|(?:extract|copy|get|pull|read|take|grab)\b.*\btext\b.*\bpdf|\bpdf\b.*\b(?:copy|extract)\b.*\btext|\b(?:edit|copy)\b.*\btext\b.*\bpdf/,ids:['pdf-to-text'],
+  say:'Use **PDF to Text** to pull the words out of a PDF so you can copy, search or edit them. Choose neat paragraphs or the original line breaks. There is no direct Word export, so paste the text into Word or Docs. For scanned PDFs that are only pictures, turn the pages into images with **PDF to Images** and then use **Image to text**.'},
+ {re:/\bpdf\b.*\b(?:to|into|as)\b.*\b(?:image|jpe?g|png|webp|picture|photo)s?\b|(?:pages?|slides?)\b.*\bpdf\b.*\b(?:image|picture|jpe?g|png)|(?:export|save|turn)\b.*\bpdf\b.*\b(?:image|jpe?g|png|picture)/,ids:['pdf-to-images'],
+  say:'Use **PDF to Images**. Pick the pages and the sharpness, choose PNG, JPG or WebP, and download one page or all of them in a ZIP. Colours are kept.'},
+ {re:new RegExp('(?:'+IMG+')\\b.*\\b(?:to|into|as)\\b.*\\bpdf|\\bpdf\\b.*\\b(?:from|using|out of|with)\\b.*'+IMG+'|\\b(?:make|create|build|generate|save|convert|turn|combine|merge|join|put)\\b.*'+IMG+'.*\\bpdf|\\bscan\\w*\\b.*\\bpdf'),ids:['image-to-pdf'],
+  say:'Use **Image to PDF**. Add as many photos, scans or screenshots as you like, put them in order, rotate any that are sideways, choose the page size, margins and quality, and download one PDF. It all happens on your device.'},
+ {re:/\b(?:word|docx?|excel|xlsx?|powerpoint|pptx?|ppt|odt|rtf|html|webpage|web page)\b.*\b(?:to|into|as)\b.*\bpdf\b|\btext\b.*\b(?:to|into|as)\b.*\bpdf\b/,ids:['markdown-preview','quick-notes','image-to-pdf'],
+  say:'I don\'t have a Word, Excel or PowerPoint to PDF converter, because those need a full office engine. The easy way: open the file in its own app, choose **Print**, then **Save as PDF**. If it is plain text, write it in **Markdown Previewer** or **Quick Notes** and use your browser\'s Print and Save as PDF. For photos and scans, **Image to PDF** is the tool.'},
+ {re:/\b(?:make|create|generate|build|write|save|export|print|get|prepare)\b.*\bpdfs?\b|\bpdf\b.*\b(?:maker|creator|generator|converter)\b|\b(?:convert|turn)\b.*\bto pdf\b/,ids:['image-to-pdf','markdown-preview','resumecraft'],
+  say:'It depends on what the PDF is made from. For **photos, scans or screenshots**, use **Image to PDF**. For **text or a document**, I don\'t have a text-to-PDF button yet: write it in **Markdown Previewer** or **Quick Notes**, then use your browser\'s Print and Save as PDF. For a **resume**, **ResumeCraft** tailors the wording and you can print it to PDF the same way.'},
+ {re:/^(?:pdf|pdfs|pdf tools?|pdf stuff|pdf things)$|(?:^|\b)(?:what|which)\b.*\b(?:pdf)\b.*\b(?:tools?|do|can)\b|\b(?:tools?|things|everything)\b.*\b(?:for|with|about)\b.*\bpdfs?\b|\bwork(?:ing)? with pdfs?\b|\bpdf help\b|\bdo with\b.*\bpdfs?\b/,ids:['image-to-pdf','pdf-to-images','pdf-to-text','pdf-translator'],
+  say:'The PDF tools I have right now:\n\n- **Image to PDF**: turn photos, scans and screenshots into one PDF\n- **PDF to Images**: save pages as PNG, JPG or WebP\n- **PDF to Text**: pull the text out to copy or edit\n- **PDF Translator**: translate a PDF into another language\n\nMerging, splitting and compressing can be done by combining PDF to Images with Image to PDF. Ask me how.'},
+ /* images and pictures */
+ {re:/(?=.*(?:image|photo|picture|jpe?g|png|webp|screenshot))(?=.*\b(?:text|ocr|read|extract|copy)\b)(?=.*\b(?:text|ocr|words|writing)\b)/,ids:['ocr'],view:true,
+  say:'Use **Image to text**. Choose a photo or screenshot and it reads the words so you can copy them. Note: the reading engine downloads on first use, so it needs an internet connection once.'},
+ {re:/(?=.*(?:image|photo|picture|jpe?g|png|webp|screenshot))(?=.*\b(?:compress|reduce|shrink|smaller|lower|optimi[sz]e|too big|too large|large size|less mb)\b)|\bcompress\w*\b.*\b(?:image|photo|picture|jpe?g|png|webp)/,ids:['image-compressor','image-resizer'],
+  say:'Use **Image Compressor** to shrink the file size with an adjustable quality slider. If you also want smaller dimensions, **Image Resizer** changes the pixel size and format. Neither uploads your picture anywhere.'},
+ {re:/(?:\b(?:png|jpe?g|webp|gif|heic|bmp)\b.*\b(?:to|into|as)\b.*\b(?:png|jpe?g|webp|gif|bmp)\b)|\b(?:resize|rescale|scale|enlarge|dimensions|pixels|passport size|change (?:the )?(?:size|format)|bigger|make.*(?:bigger|larger))\b.*\b(?:image|photo|picture|jpe?g|png|webp)|(?:image|photo|picture).*\b(?:resize|dimensions|pixels|format)\b/,ids:['image-resizer','image-compressor'],
+  say:'Use **Image Resizer**. It changes the size in pixels and converts between formats like PNG, JPG and WebP, all on your device. To shrink the file size without changing dimensions, use **Image Compressor**.'},
+ {re:/\bcrop\w*\b.*\b(?:image|photo|picture)|\b(?:image|photo|picture)\b.*\bcrop/,ids:['image-resizer','image-filters','drawing-pad'],
+  say:'I don\'t have a crop tool yet. **Image Resizer** changes the size and format, and **Image Filters** can rotate or flip a photo.'},
+ {re:/\b(?:rotate|flip|mirror|grayscale|greyscale|black and white|sepia|invert|brighten|darken|filter|pixelate)\b.*\b(?:image|photo|picture|jpe?g|png)|\b(?:edit|filter)\b.*\b(?:photo|picture|image)/,ids:['image-filters'],
+  say:'Use **Image Filters & Rotate**: brightness, contrast, grayscale, sepia, invert, pixelate, rotate and flip, all in your browser.'},
+ {re:/\bblur\w*\b.*\bfaces?\b|\b(?:hide|anonymi[sz]e|pixelate|cover)\b.*\bfaces?\b|\bfaces?\b.*\bblur/,ids:['face-blur'],
+  say:'Use **AI Face Blur**. It finds faces in a photo and blurs them so people stay private. You choose how strong the blur is.'},
+ {re:/(?:\b(?:make|create|generate|build)\b.*\bqr\b|\bqr\b.*\b(?:maker|generator|creator|for)\b|\bwifi qr\b)/,ids:['qr-generator'],
+  say:'Use **QR Code Generator**. It makes QR codes for links, text, Wi-Fi, email, phone, SMS, locations and contact cards, and saves them as images. In this chat you can also type `qr for https://your-link` and I will make one right here.'},
+ {re:/\b(?:scan|read|decode|reader|from a photo|from photo)\b.*\bqr\b|\bqr\b.*\b(?:scan|read|decode|reader)\b/,ids:['qr-scanner'],
+  say:'Use **QR Code Scanner**. Scan with your camera, or read a QR code from a photo or screenshot.'},
+ {re:/\b(?:make|create|generate)\b.*\bbarcode|\bbarcode\b.*\b(?:maker|generator)/,ids:['barcode-generator'],
+  say:'Use **Barcode Generator** for Code 128 and EAN-13 barcodes you can save as PNG.'},
+ /* things I really don't have */
+ {re:/\b(?:video|mp4|mov|avi|mkv|mp3|wav|audio|song|music)\b.*\b(?:convert|compress|edit|trim|cut|merge|join|extract|make|download)|\b(?:convert|compress|edit|trim|cut|merge|join|extract|download)\b.*\b(?:video|mp4|mov|avi|mkv|mp3|wav|audio)\b/,ids:['tone-generator','text-to-speech','speech-to-text'],
+  say:'I don\'t have video or audio converters or editors, since those need heavy codecs that don\'t fit in a small offline page. For sound I have **Text to Speech**, **Speech to Text**, **Tone Generator** and **Metronome**.'},
+ {re:/\b(?:remove|erase|delete)\b.*\bbackground\b|\bbackground remover\b|\bupscale|\benhance\b.*\b(?:photo|image)|\bunblur/,ids:['image-filters','image-resizer'],
+  say:'I don\'t have a background remover or an AI photo enhancer. For basic photo edits, **Image Filters & Rotate** and **Image Resizer** are the closest.'}
+];
+const EXPLICIT=/\b(?:which|what|any|some|best)\s+(?:tools?|apps?|features?|options?)\b|\btools?\s+(?:for|to|that|which|can|helps?|used|available)\b|\bis there (?:a|an|any)\b.*\b(?:tool|way|option|feature|app)\b|\b(?:recommend|suggest|looking for|search for|need|want)\b.*\btools?\b|\bwhich one\b|\bwhich of your\b|\bwhat can i do with\b|\bwhere can i\b|\bwhere do i\b/;
+const HOWTO=/^(?:how (?:do|can|could|should|would) (?:i|we|you|one)|how to|i (?:want|need|wanna|have|would like|ll like) to|i'd like to|help me|is it possible to|can i|can we|ways? to|what(?:'s| is) (?:the )?(?:best |easiest |fastest |simplest )?way to|let me|lets|let's|i am trying to|i'm trying to|any way to|how about)\b/;
+const OBJ=/\b(?:pdfs?|jpe?g|png|webp|gif|images?|photos?|pictures?|screenshots?|scans?|qr|barcodes?|resumes?|cv|docx?|word file|excel|spreadsheet|powerpoint|ppt|csv|json|xml|yaml|html|css|files?|documents?|videos?|audio|mp3|mp4|music|invoices?|receipts?|notes|quiz|flashcards?|timetable|expenses?)\b/;
+const VERB=/\b(?:make|create|convert|compress|merge|split|resize|rotate|extract|translate|edit|scan|combine|reduce|shrink|crop|flip|blur|save|download|print|read|generate|turn|change|join|unlock|protect|sign|watermark|fix|check|count|find|track|plan|build|compare|clean|sort|format|encode|decode|encrypt|calculate|remove|erase|delete|enhance|upscale|trim|cut)\b/;
+const BLOCK=/\b(?:python|java|javascript|typescript|c\+\+|c#|sql query|bash|linux|git|react|node|django|php|ruby|golang|rust|kotlin|swift|function|program(?:ming)?|script|regex for|code to|in code|algorithm|variable|array)\b/;
+const FMT='pdf|jpe?g|png|webp|gif|bmp|heic|txt|text|word|docx?|csv|json|yaml|yml|xml|html|base64|binary|hex|ascii|markdown|md|qr|mp3|mp4|wav|mov|video|audio|excel|xlsx?|ppt|pptx|image|photo|picture|screenshot|scan';
+const FMTPAIR=new RegExp('\\b(?:'+FMT+')\\s+(?:to|into|2)\\s+(?:'+FMT+')\\b');
+const CATS={pdf:'PDF tools',text:'Text',developer:'Developer',dev:'Developer',developers:'Developer',math:'Math',maths:'Math',finance:'Finance',money:'Finance',health:'Health',fitness:'Health',date:'Date & Time',time:'Date & Time',generator:'Generators',generators:'Generators',random:'Generators',media:'Media',image:'Media',images:'Media',puzzle:'Puzzles',puzzles:'Puzzles',game:'Puzzles',games:'Puzzles',utility:'Utilities',utilities:'Utilities',convert:'Convert',conversion:'Convert',unit:'Convert',units:'Convert'};
+function listCat(q){const m=q.match(/\b(?:list|show|see|all|what|which|available|my|your|the)\b.*?\b(pdf|text|developers?|dev|math|maths|finance|money|health|fitness|date|time|generators?|random|media|images?|puzzles?|games?|utilit(?:y|ies)|convert|conversion|units?)\b\s*(?:related\s+)?tools?\b|^(pdf|text|developer|math|finance|health|date and time|generator|media|image|puzzle|utility|convert|conversion)\s+tools?$/);
+  if(!m)return null;const key=(m[1]||m[2]).replace(/s$/,m[1]==='maths'?'s':'');const cat=CATS[key]||CATS[(m[1]||m[2])];if(!cat)return null;
+  const ts=TOOLS.filter(t=>t.cat===cat);if(!ts.length)return null;
+  const shown=ts.slice(0,10);return R('I have **'+ts.length+'** tools in **'+cat+'**:\n\n'+shown.map(t=>'- **'+t.name+'**: '+firstSentence(t.desc)).join('\n')+(ts.length>shown.length?'\n\n…and '+(ts.length-shown.length)+' more in All tools.':''),{acts:[...shown.slice(0,4).map(t=>({label:'Open '+t.name,go:t.id})),{label:'All tools',go:'tools'}],skill:'Tool finder',mood:'think'})}
+const firstSentence=d=>{const m0=String(d).match(/^.*?[.!?](?=\s|$)/),s=m0?m0[0]:String(d);return s.length>96?s.slice(0,93).replace(/\s+\S*$/,'')+'…':s};
+B.hooks.find=(q,k)=>BLOCK.test(q)?[]:find(q,k);B.findTools=B.hooks.find;
+const act=id=>id==='ocr'?{label:'Open Image to text',go:'ocr'}:{label:'Open '+tl(id).name,go:id};
+
+B.addSkill('toolfind','Tool finder',['which tool makes a pdf','how do I compress a photo','merge pdf','pdf tools'],(q,raw)=>{
+  const s=q.replace(/[?!.]+$/,'').trim();
+  const explicit=EXPLICIT.test(s),words=s.split(/\s+/).length;
+  const urlOrNum=/https?:|www\.|@|\b\d+(?:\.\d+)?\b/.test(s);
+  const l=listCat(s);if(l)return l;
+  if(/\bhow many (?:tools|features)\b|\bnumber of tools\b|\btotal tools\b|\bwhat tools (?:do you|are|have)\b|\bwhat (?:are )?(?:all )?(?:the )?tool categories\b|\blist (?:of )?(?:all )?(?:the )?(?:your )?tools\b/.test(s)){const c={};TOOLS.forEach(t=>c[t.cat]=(c[t.cat]||0)+1);const rows=Object.entries(c).sort((a,b)=>b[1]-a[1]);
+    return R('There are **'+TOOLS.length+' tools** in **'+rows.length+' groups**:\n\n'+rows.map(([k,v])=>'- '+k+': '+v).join('\n')+'\n\nTell me the job (like “shrink a photo” or “split a bill”) and I will point you to the right one.',{acts:[{label:'All tools',go:'tools'}],skill:'Tool finder',mood:'think'})}
+  const strong=!explicit&&words<=5&&VERB.test(s)&&!urlOrNum&&!BLOCK.test(s)&&(()=>{const r=rank(s);return r.length&&r[0].bonus>0})();
+  const intent=strong||explicit||(HOWTO.test(s)&&OBJ.test(s))||(words<=9&&OBJ.test(s)&&VERB.test(s))||FMTPAIR.test(s)||/^(?:pdfs?|pdf tools?)$/.test(s);
+  if(!intent)return null;
+  if(BLOCK.test(s)&&!explicit)return null;
+  if(urlOrNum&&!explicit&&!FMTPAIR.test(s))return null;
+  if(/^(?:what|who|whom|when|define|meaning|explain|full form)\b/.test(s)&&!explicit)return null;
+  for(const e of KB){if(e.re.test(s)){const acts=e.ids.map(act);return R(e.say,{acts,skill:'Tool finder',mood:'think'})}}
+  const ts=find(s,3);
+  if(ts.length)return R((ts.length===1?'This is the tool for that:':'These tools can help:')+'\n\n'+ts.map(t=>'- **'+t.name+'**: '+firstSentence(t.desc)).join('\n'),{acts:ts.map(t=>({label:'Open '+t.name,go:t.id})),skill:'Tool finder',mood:'think'});
+  if(explicit)return R('I couldn\'t find a tool that matches that. I have '+TOOLS.length+' tools, so try describing the job in different words, like “compress a photo” or “plan my study time”, or browse them all.',{acts:[{label:'All tools',go:'tools'}],skill:'Tool finder',mood:'sad'});
+  return null},'memory');
+B.toolfind={rank,find,KB,INT};
+const FT=[['pdf|pdf file|pdfs','A **PDF** (Portable Document Format) keeps a document looking the same on every device. It is great for sharing and printing. In this toolkit you can turn photos into a PDF, pull text out of one, save pages as pictures, or translate a PDF. Ask me “which tool helps with PDF?”.'],
+['jpg|jpeg','**JPG** (or JPEG) is a common photo format that makes files small by dropping detail your eye barely notices. It is great for photos, but not for sharp text or logos. Use Image Compressor to make one smaller.'],
+['png','**PNG** is an image format that keeps every pixel exactly and supports transparency. It suits logos, screenshots and graphics, but photos are bigger than as JPG.'],
+['webp','**WebP** is a modern image format that is usually smaller than JPG or PNG at the same quality. Image Resizer can convert to it.'],
+['gif','A **GIF** is an image format that can hold a short looping animation, with up to 256 colours per frame.'],
+['svg','**SVG** is an image format made of shapes and paths rather than pixels, so it stays sharp at any size. Logos and icons often use it.'],
+['csv','**CSV** (comma-separated values) is a plain-text table where each line is a row and commas split the columns. Excel and Google Sheets open it. CSV to JSON can convert it.'],
+['json','**JSON** is a plain-text way of storing data as key and value pairs, like `{"name":"Asha","age":20}`. Almost every web app uses it. JSON Formatter can tidy and check it.'],
+['xml','**XML** is a text format that stores data inside nested tags like `<name>Asha</name>`. XML Formatter can validate and indent it.'],
+['yaml|yml','**YAML** is a human-friendly way to write settings and data using indentation instead of brackets. JSON to YAML can convert it.'],
+['ocr','**OCR** (optical character recognition) reads the text in a picture so you can copy it. Use Image to text for photos and screenshots.'],
+['zip|zip file','A **ZIP** file bundles many files into one and compresses them to save space.'],
+['mp3','**MP3** is a common audio format that shrinks music files by removing sounds that are hard to hear.'],
+['mp4','**MP4** is a common video format. It stores video, audio and subtitles in one file and plays almost everywhere.'],
+['docx|word file','A **DOCX** file is a Microsoft Word document. Google Docs and LibreOffice can open it.'],
+['base64','**Base64** turns any data into plain letters and numbers so it can travel inside text, like in emails or web pages. It is not encryption. Base64 Encode / Decode can convert it.']];
+FT.forEach(([k,d])=>{if(!B.lookup(k.split('|')[0]))B.addTerms([[k,d]])});
+})();
+</script>
+<script>
 /* ================= SHELL: mobile-app UI ================= */
 const IC={
   home:'<path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z"/>',
@@ -8495,7 +8997,7 @@ const IC={
   'c_Utilities':'<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>'};
 const I=n=>'<svg class="i" viewBox="0 0 24 24" aria-hidden="true">'+(IC[n]||IC.grid)+'</svg>';
 const catI=c=>I('c_'+c);
-const NAV=[['dashboard','Home','home'],['tools','All tools','grid'],['assistant','AI assistant','orb'],['qr-tools','QR and barcodes','qr'],['ai-settings','Settings','sliders']];
+const NAV=[['dashboard','home','home'],['tools','tools','grid'],['assistant','assistant','orb'],['qr-tools','qr','qr'],['ai-settings','settings','sliders']];
 const VIEWS={dashboard:'Home',assistant:'AI Assistant',tools:'All tools',ocr:'Image to text','qr-tools':'QR & barcodes','ai-settings':'Settings','word-search-results':'Word Search results',profile:'Profile'};
 const favs=()=>{const f=store.get('favs',[]);return Array.isArray(f)?f.filter(id=>BYID[id]):[]};
 const recents=()=>{const f=store.get('recent',[]);return Array.isArray(f)?f.filter(id=>BYID[id]):[]};
@@ -8506,7 +9008,8 @@ const toEnd=()=>{const s=screen();s.scrollTop=s.scrollHeight};
 const NT=TOOLS.length;
 
 /* nav */
-$('#nav').innerHTML=NAV.map(([id,l,ic])=>'<button data-v="'+id+'" aria-label="'+l+'" title="'+l+'"'+(ic==='orb'?' class="orbbtn"':'')+'>'+(ic==='orb'?MASCOT.mini(34):I(ic))+'</button>').join('');
+function buildNav(){const cur=document.querySelector('#nav [aria-current]'),cid=cur&&cur.dataset.v;$('#nav').innerHTML=NAV.map(([id,k,ic])=>{const l=esc(tx(k));return'<button data-v="'+id+'" aria-label="'+l+'" title="'+l+'"'+(id===cid?' aria-current="page"':'')+(ic==='orb'?' class="orbbtn"':'')+'>'+(ic==='orb'?MASCOT.mini(34):I(ic))+'</button>'}).join('')}
+buildNav();I18N.applyDir();
 $('#nav').onclick=e=>{const b=e.target.closest('button');if(b)go(b.dataset.v==='dashboard'?'':b.dataset.v)};
 document.querySelector('.showcase h1').innerHTML=NT+' Tools with<br>AI Powered<br><i>Everyday Toolkit</i>';
 document.querySelectorAll('.showcase .chiprow span')[0].textContent=NT+' tools';
@@ -8588,29 +9091,29 @@ const featCard=([id,art,title,sub])=>{const isTool=!!BYID[id];if(!isTool&&id!=='
   return'<div class="fcard"><div class="fx" role="button" tabindex="0" data-go="'+id+'"><div class="art">'+ART[art]()+'</div>'+(isTool?'<button class="savep star" data-s="'+id+'" aria-pressed="'+f+'">Save '+I('heart')+'</button>':'')+
   '<div class="glass"><div class="gtxt"><b>'+esc(title)+'</b><small>'+esc(sub)+'</small></div><span class="trypill">Open '+MASCOT.mini(16)+'</span></div></div></div>'};
 function renderDashboard(){
-  const el=$('#v-dashboard');const h=new Date().getHours(),g=h<12?'Good Morning!':h<17?'Good Afternoon!':'Good Evening!',em=h<6||h>=19?'🌙':h<17?'☀️':'🌇';
-  const nm=BRAIN.mem.user||(FBUSER&&FBUSER.displayName)||'there';
-  el.innerHTML='<div class="hdr"><div class="who"><small>'+g+' '+em+'</small><b>Hello, '+esc(nm)+'</b></div><button class="circ themeBtn" aria-label="Change theme" id="themeBtn"></button><button class="ava mine" data-go="profile" aria-label="Your profile" title="Your profile">'+avatarInner()+'</button></div>'+
-    '<button class="searchpill" id="dashSearch">'+I('search')+'<span id="dsTxt">Describe what you need</span><kbd>/</kbd></button>'+
+  const el=$('#v-dashboard');const h=new Date().getHours(),g=(h<12?tx('gm'):h<17?tx('ga'):tx('ge'))+'!',em=h<6||h>=19?'🌙':h<17?'☀️':'🌇';
+  const nm=BRAIN.mem.user||(FBUSER&&FBUSER.displayName)||tx('there');
+  el.innerHTML='<div class="hdr"><div class="who"><small>'+g+' '+em+'</small><b>'+esc(tx('hello',{n:nm}))+'</b></div><button class="circ themeBtn" aria-label="Change theme" id="themeBtn"></button><button class="ava mine" data-go="profile" aria-label="Your profile" title="Your profile">'+avatarInner()+'</button></div>'+
+    '<button class="searchpill" id="dashSearch">'+I('search')+'<span id="dsTxt">'+esc(tx('describe'))+'</span><kbd>/</kbd></button>'+
     '<div class="chips" id="dchips"></div>'+
     '<div class="feed" id="feed">'+FEAT.map(featCard).join('')+'</div><div class="dots" id="dots"></div>'+
     '<div class="thumbs" id="thumbs"></div>'+
     '<div class="sectt"><h2 id="dtitle"></h2><button id="dall"></button></div><div class="board"><div class="tgrid" id="dgrid"></div></div>'+
-    '<div class="sectt"><h2>PDF tools</h2><button id="dpdfAll">See all</button></div><div class="board"><div class="tgrid" id="dpdf"></div></div>'+
+    '<div class="sectt"><h2>'+esc(tx('pdftools'))+'</h2><button id="dpdfAll">'+esc(tx('seeall',{n:NT>0?TOOLS.filter(t=>t.cat===PCAT).length:''}))+'</button></div><div class="board"><div class="tgrid" id="dpdf"></div></div>'+
     '<div class="sectt devsec"><h2>'+esc(DEVSEC)+'</h2><span>by '+esc(DEVBY)+'</span></div><div class="board"><div class="tgrid" id="dsoum"></div></div>'+
     '<div class="sectt devsec"><h2>'+esc(KSEC)+'</h2><span>by '+esc(KBY)+'</span></div><div class="board"><div class="tgrid" id="dkeer"></div></div>'+
     '<div class="sectt devsec"><h2>'+esc(ASEC)+'</h2><span>by '+esc(ABY)+'</span></div><div class="board"><div class="tgrid" id="dana"></div></div>'+
     '<div class="sectt devsec"><h2>'+esc(SSEC)+'</h2><span>by '+esc(SBY)+'</span></div><div class="board"><div class="tgrid" id="dsanj"></div></div>'+
-    '<div class="sectt"><h2>Browse by category</h2></div><div class="board"><div class="rows" id="dcats"></div></div>'+
-    '<div class="sectt"><h2>More</h2></div><div class="board"><div class="rows">'+
-      '<button class="rowbtn" data-go="ocr"><span class="ic">'+I('scan')+'</span><span><strong>Image to text</strong><small>Read text from photos and screenshots</small></span></button>'+
-      '<button class="rowbtn" data-go="qr-tools"><span class="ic">'+I('qr')+'</span><span><strong>QR &amp; barcodes</strong><small>Create, scan and download</small></span></button>'+
-      '<button class="rowbtn" data-go="assistant"><span class="ic">'+MASCOT.mini(22)+'</span><span><strong>Ask ZXVI Core</strong><small>Math, converting, dates and more, offline</small></span></button></div></div>';
+    '<div class="sectt"><h2>'+esc(tx('browse'))+'</h2></div><div class="board"><div class="rows" id="dcats"></div></div>'+
+    '<div class="sectt"><h2>'+esc(tx('more'))+'</h2></div><div class="board"><div class="rows">'+
+      '<button class="rowbtn" data-go="ocr"><span class="ic">'+I('scan')+'</span><span><strong>'+esc(tx('imgtext'))+'</strong><small>'+esc(tx('imgtextsub'))+'</small></span></button>'+
+      '<button class="rowbtn" data-go="qr-tools"><span class="ic">'+I('qr')+'</span><span><strong>'+esc(tx('qr'))+'</strong><small>'+esc(tx('qrsub'))+'</small></span></button>'+
+      '<button class="rowbtn" data-go="assistant"><span class="ic">'+MASCOT.mini(22)+'</span><span><strong>'+esc(tx('askz',{bot:BRAIN.mem.bot}))+'</strong><small>'+esc(tx('askzsub'))+'</small></span></button></div></div>';
   applyTheme(theme);drawQrCanvases(el);
   const feed=$('#feed'),n0=feed.children.length,vis=Math.max(1,Math.floor((feed.clientWidth+12)/((feed.firstElementChild?feed.firstElementChild.offsetWidth:1)+12))),n=Math.max(1,n0-vis+1);$('#dots').innerHTML=Array.from({length:n},(_,i)=>'<i'+(i?'':' class="on"')+'></i>').join('');
   feed.onscroll=()=>{const i=Math.min(n-1,Math.round(feed.scrollLeft/(feed.firstElementChild.offsetWidth+12)));[...$('#dots').children].forEach((d,k)=>d.classList.toggle('on',k===i))};
   const cats=CATS.map(c=>[c,TOOLS.filter(t=>t.cat===c).length]).filter(x=>x[1]);
-  $('#dcats').innerHTML=cats.map(([c,k])=>'<button class="rowbtn" data-cat="'+esc(c)+'"><span class="ic">'+catI(c)+'</span><strong>'+esc(c)+'</strong><span class="n">'+k+'</span></button>').join('');
+  $('#dcats').innerHTML=cats.map(([c,k])=>'<button class="rowbtn" data-cat="'+esc(c)+'"><span class="ic">'+catI(c)+'</span><strong>'+esc(I18N.catName(c))+'</strong><span class="n">'+k+'</span></button>').join('');
   $('#dcats').onclick=e=>{const b=e.target.closest('[data-cat]');if(b){e.stopPropagation();TS.cat=b.dataset.cat;TS.q='';go('tools')}};
   $('#dchips').onclick=e=>{const b=e.target.closest('.chip');if(b){DS.cat=b.dataset.c;drawDash()}};
   $('#dall').onclick=()=>{TS.cat=DS.cat;TS.q='';go('tools')};
@@ -8622,27 +9125,27 @@ function renderDashboard(){
   drawDash()}
 function drawDash(){
   const fv=favs(),rc=recents();
-  $('#dchips').innerHTML=['All','Favorites',...CATS].map(c=>'<button class="chip" data-c="'+esc(c)+'" aria-pressed="'+(DS.cat===c)+'">'+esc(c)+'</button>').join('');
+  $('#dchips').innerHTML=['All','Favorites',...CATS].map(c=>'<button class="chip" data-c="'+esc(c)+'" aria-pressed="'+(DS.cat===c)+'">'+esc(I18N.label(c))+'</button>').join('');
   const quick=[...new Set([...fv,...rc,...DEFAULT_IDS])].filter(id=>BYID[id]).slice(0,4);
   $('#thumbs').innerHTML=quick.map(id=>'<button class="thumb" data-t="'+id+'" title="'+esc(BYID[id].name)+'" aria-label="'+esc(BYID[id].name)+'">'+catI(BYID[id].cat)+'<small>'+esc(shortName(BYID[id].name))+'</small></button>').join('');
   let list,title;
-  if(DS.cat==='All'){list=DEFAULT_IDS.map(id=>BYID[id]).filter(Boolean);title='Popular tools'}
-  else if(DS.cat==='Favorites'){list=fv.map(id=>BYID[id]);title='Your favorites'}
-  else{list=TOOLS.filter(t=>t.cat===DS.cat);title=DS.cat}
+  if(DS.cat==='All'){list=DEFAULT_IDS.map(id=>BYID[id]).filter(Boolean);title=tx('popular')}
+  else if(DS.cat==='Favorites'){list=fv.map(id=>BYID[id]);title=tx('yourfavs')}
+  else{list=TOOLS.filter(t=>t.cat===DS.cat);title=I18N.catName(DS.cat)}
   const total=DS.cat==='All'?NT:list.length;list=list.slice(0,8);
-  $('#dtitle').textContent=title;$('#dall').textContent=DS.cat==='Favorites'?'':'See all '+total;
-  $('#dgrid').innerHTML=list.length?list.map(tileHtml).join(''):'<div class="empty">No favorites yet. Tap the heart on any tool.</div>'}
+  $('#dtitle').textContent=title;$('#dall').textContent=DS.cat==='Favorites'?'':tx('seeall',{n:total});
+  $('#dgrid').innerHTML=list.length?list.map(tileHtml).join(''):'<div class="empty">'+esc(tx('nofavs'))+'</div>'}
 
 /* rotating example prompt in the home search pill */
-let exI=0;setInterval(()=>{const t=$('#dsTxt');if(!t||!t.offsetParent)return;exI=(exI+1)%SMART.EXAMPLES.length;t.style.opacity=0;setTimeout(()=>{t.textContent='Try “'+SMART.EXAMPLES[exI]+'”';t.style.opacity=1},180)},2800);
+let exI=0;setInterval(()=>{const t=$('#dsTxt');if(!t||!t.offsetParent)return;exI=(exI+1)%SMART.EXAMPLES.length;t.style.opacity=0;setTimeout(()=>{t.textContent=I18N.cur==='en'?'Try “'+SMART.EXAMPLES[exI]+'”':tx('describe');t.style.opacity=1},180)},2800);
 
 /* ---- tool library ---- */
 const TS={q:'',cat:'All'};
 function renderTools(){
   const el=$('#v-tools');
   if(!el.dataset.ready){el.dataset.ready=1;
-    el.innerHTML='<div class="vhead"><div class="kicker">Library</div><h1 class="ttl">All tools</h1><p class="sub">'+NT+' tools that run in your browser. Tap one to open it.</p></div>'+
-      '<div class="searchpill" style="margin-top:0"><span style="display:flex">'+I('search')+'</span><input id="tq" type="search" placeholder="Describe what you need…" autocomplete="off" aria-label="Search tools" style="background:none;box-shadow:none;border:0;padding:0;flex:1"></div>'+
+    el.innerHTML='<div class="vhead"><div class="kicker">'+esc(tx('library'))+'</div><h1 class="ttl">'+esc(tx('tools'))+'</h1><p class="sub">'+esc(tx('toolsub',{n:NT}))+'</p></div>'+
+      '<div class="searchpill" style="margin-top:0"><span style="display:flex">'+I('search')+'</span><input id="tq" type="search" placeholder="'+esc(tx('describe'))+'…" autocomplete="off" aria-label="'+esc(tx('describe'))+'" style="background:none;box-shadow:none;border:0;padding:0;flex:1"></div>'+
       '<p class="smarthint" id="thint"></p><div class="chips" id="tchips"></div><div class="sectt"><h2 id="tcount"></h2></div><div class="board"><div class="tgrid" id="tgrid"></div></div>';
     $('#tq').oninput=()=>{TS.q=$('#tq').value;drawTools()};
     $('#tchips').onclick=e=>{const b=e.target.closest('.chip');if(b){TS.cat=b.dataset.c;drawTools()}}}
@@ -8651,10 +9154,10 @@ function drawTools(){
   const fv=favs(),q=TS.q.trim(),ranked=q.length>=2?SMART.search(TS.q,60):null,why={};
   const list=ranked?ranked.map(r=>(why[r.t.id]=r.why===r.t.desc?'':r.why,r.t)):TOOLS,cnt=c=>c==='All'?list.length:c==='Favorites'?list.filter(t=>fv.includes(t.id)).length:list.filter(t=>t.cat===c).length;
   $('#thint').innerHTML=ranked?''+MASCOT.mini(16)+'Best matches for “'+esc(q)+'”, ranked by what you want to do.':'Smart search: describe the job, like “shrink a photo for email” or “split a restaurant bill”.';
-  $('#tchips').innerHTML=['All','Favorites',...CATS].map(c=>'<button class="chip" data-c="'+esc(c)+'" aria-pressed="'+(TS.cat===c)+'">'+esc(c)+'<span>'+cnt(c)+'</span></button>').join('');
+  $('#tchips').innerHTML=['All','Favorites',...CATS].map(c=>'<button class="chip" data-c="'+esc(c)+'" aria-pressed="'+(TS.cat===c)+'">'+esc(I18N.label(c))+'<span>'+cnt(c)+'</span></button>').join('');
   const shown=list.filter(t=>TS.cat==='All'||(TS.cat==='Favorites'?fv.includes(t.id):t.cat===TS.cat));
-  $('#tcount').textContent=(ranked?'Results':(TS.cat==='All'?'Everything':TS.cat))+(!ranked&&SECBY[TS.cat]?' · by '+SECBY[TS.cat]:'')+' · '+shown.length;
-  $('#tgrid').innerHTML=shown.length?shown.map(t=>tileHtml(t,ranked?why[t.id]:'')).join(''):'<div class="empty">'+(TS.cat==='Favorites'&&!q?'No favorites yet. Tap the heart on any tool.':'No tool matches “'+esc(q)+'”.<br><button class="btn pri" style="margin-top:12px" data-ask="'+esc(q)+'">Ask '+esc(BRAIN.mem.bot)+' Core instead</button>')+'</div>'}
+  $('#tcount').textContent=(ranked?tx('results'):(TS.cat==='All'?tx('everything'):I18N.catName(TS.cat)))+(!ranked&&SECBY[TS.cat]?' · by '+SECBY[TS.cat]:'')+' · '+shown.length;
+  $('#tgrid').innerHTML=shown.length?shown.map(t=>tileHtml(t,ranked?why[t.id]:'')).join(''):'<div class="empty">'+(TS.cat==='Favorites'&&!q?esc(tx('nofavs')):'No tool matches “'+esc(q)+'”.<br><button class="btn pri" style="margin-top:12px" data-ask="'+esc(q)+'">Ask '+esc(BRAIN.mem.bot)+' Core instead</button>')+'</div>'}
 screen().addEventListener('click',e=>{const a=e.target.closest('[data-ask]');if(a){e.stopPropagation();askAi(a.dataset.ask)}},true);
 
 /* ---- tool page ---- */
@@ -8735,22 +9238,36 @@ function addBot(r){const d=document.createElement('div');d.className='msg assist
   if(r.node)d.appendChild(r.node);
   const acts=[...(r.acts||[])];if(r.copy)acts.push({label:'Copy',fn:()=>copyText(r.copy)});
   if(acts.length){const row=document.createElement('div');row.className='row aiacts';acts.forEach(a=>{const b=document.createElement('button');b.className='btn sm';b.textContent=a.label;b.onclick=()=>a.go!=null?go(a.go):a.fn&&a.fn();row.appendChild(b)});d.appendChild(row)}
+  if(MASCOT.hasVoice&&r.md&&r.skill!=='fallback'){const row=d.querySelector('.aiacts')||(()=>{const x=document.createElement('div');x.className='row aiacts';d.appendChild(x);return x})();const lb=document.createElement('button');lb.className='btn sm';lb.type='button';lb.innerHTML=SPK;lb.setAttribute('aria-label',tx('listen'));lb.title=tx('listen');lb.onclick=()=>{if(!MASCOT.speak(MASCOT.plain(r.md,700),{lang:'en',force:true}))toast('This device has no voice to speak with.')};row.appendChild(lb)}
   if(r.skill){const t=document.createElement('div');t.className='skilltag';t.textContent=r.skill;d.appendChild(t)}
   $('#msgs').appendChild(d);toEnd();
   if(r.go!=null)setTimeout(()=>go(r.go),650);return d}
 let ZS=null;
+const MIC='<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+let micH=null;
+function toggleMic(){const b=$('#micBtn');if(!b)return;if(micH){micH.stop();return}
+  MASCOT.stopSpeak();const inp=$('#chatIn');
+  const off=()=>{micH=null;b.setAttribute('aria-pressed','false');b.classList.remove('on')};
+  micH=MASCOT.listen({lang:MASCOT.prefs.mic,
+    onState:st=>{if(st==='listening'){b.setAttribute('aria-pressed','true');b.classList.add('on');const z=$('#zbub');if(z)z.textContent=tx('listening')}},
+    onInterim:t=>{inp.value=t},
+    onError:e=>toast(e==='not-allowed'||e==='service-not-allowed'?'The microphone is blocked. Allow it in the address bar and try again.':e==='no-speech'?'I did not hear anything. Tap the mic and try again.':e==='network'?'Speech recognition needs an internet connection in this browser.':e==='language-not-supported'?'This browser cannot recognise that language. Pick another in Settings.':'The microphone did not work ('+e+').'),
+    onFinal:t=>{off();if(t){inp.value=t;sendChat()}}});
+  if(!micH)off()}
 const SPK='<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg>';
 function renderAssistant(){
   const el=$('#v-assistant');if(!el.dataset.ready){el.dataset.ready=1;if(ZS){ZS.stop();ZS=null}const nm=esc(BRAIN.mem.bot);
-    el.innerHTML='<div class="zstage"><div class="zchar" id="zchar" role="button" tabindex="0" aria-label="Tap '+nm+' to say hi"></div><div class="zside"><div class="ztop"><div style="flex:1;min-width:0"><b>'+nm+' Core</b><small id="modelLabel"></small></div>'+
-      (MASCOT.hasVoice?'<button class="zcirc" id="zvoice" aria-pressed="'+!!MASCOT.prefs.voice+'" aria-label="Speak replies aloud" title="Speak replies aloud">'+SPK+'</button>':'')+
-      '<button class="zcirc" id="clearChat" aria-label="New chat" title="New chat">'+I('back')+'</button><button class="zcirc" data-go="ai-settings" aria-label="Settings" title="Settings">'+I('gear')+'</button></div><div class="zbubble" id="zbub"></div></div></div>'+
-      '<div class="chips" id="starters">'+STARTERS.map((s,i)=>'<button class="chip" data-s="'+i+'">'+esc(s[0])+'</button>').join('')+'</div>'+
+    el.innerHTML='<div class="zstage"><div class="zchar" id="zchar" role="button" tabindex="0" aria-label="'+nm+'"></div><div class="zside"><div class="ztop"><div style="flex:1;min-width:0"><b>'+nm+' Core</b><small id="modelLabel"></small></div>'+
+      (MASCOT.hasVoice?'<button class="zcirc" id="zvoice" aria-pressed="'+!!MASCOT.prefs.voice+'" aria-label="'+esc(tx('speakreplies'))+'" title="'+esc(tx('speakreplies'))+'">'+SPK+'</button>':'')+
+      '<button class="zcirc" id="clearChat" aria-label="'+esc(tx('newchat'))+'" title="'+esc(tx('newchat'))+'">'+I('back')+'</button><button class="zcirc" data-go="ai-settings" aria-label="'+esc(tx('settings'))+'" title="'+esc(tx('settings'))+'">'+I('gear')+'</button></div><div class="zbubble" id="zbub"></div></div></div>'+
+      '<div class="chips" id="starters">'+STARTERS.map((s,i)=>'<button class="chip" data-s="'+i+'">'+esc(i<14?tx('s'+(i+1)):tx('surprise'))+'</button>').join('')+'</div>'+
+      (I18N.cur!=='en'?'<p class="muted enhint" style="margin:0 2px 8px;font-size:12.5px">'+esc(tx('enhint'))+'</p>':'')+
       '<div class="msgs" id="msgs" aria-live="polite"></div>'+
-      '<div class="composer"><textarea id="chatIn" rows="1" placeholder="Ask anything, like “15% of 3200” or “capital of Japan”"></textarea><button class="sendb" id="sendChat" aria-label="Send">'+I('send')+'</button></div>';
+      '<div class="composer"><textarea id="chatIn" rows="1" placeholder="'+esc(innerWidth>=600?tx('askph'):tx('askme'))+'" aria-label="'+esc(tx('askph'))+'"></textarea>'+(MASCOT.hasMic?'<button class="micb" id="micBtn" type="button" aria-pressed="false" aria-label="'+esc(tx('mic'))+'" title="'+esc(tx('mic'))+'">'+MIC+'</button>':'')+'<button class="sendb" id="sendChat" aria-label="'+esc(tx('send'))+'">'+I('send')+'</button></div>';
     ZS=MASCOT.stage($('#zchar'),$('#zbub'));
     greetBot();
-    const zv=$('#zvoice');if(zv)zv.onclick=()=>{MASCOT.prefs.voice=!MASCOT.prefs.voice;MASCOT.savePrefs();zv.setAttribute('aria-pressed',MASCOT.prefs.voice);if(MASCOT.prefs.voice){ZS.say('Voice is on. I will read my replies out loud.','happy')}else{MASCOT.stopSpeak();toast('Voice off')}};
+    const zv=$('#zvoice');if(zv)zv.onclick=()=>{MASCOT.prefs.voice=!MASCOT.prefs.voice;MASCOT.savePrefs();zv.setAttribute('aria-pressed',MASCOT.prefs.voice);if(MASCOT.prefs.voice){ZS.say('Voice is on. I will read my replies out loud.','happy',null,{lang:'en'})}else{MASCOT.stopSpeak();toast('Voice off')}};
+    const mb=$('#micBtn');if(mb)mb.onclick=toggleMic;
     $('#starters').onclick=e=>{const s=e.target.closest('.chip');if(s){$('#chatIn').value=STARTERS[+s.dataset.s][1];sendChat()}};
     $('#clearChat').onclick=()=>{$('#msgs').innerHTML='';BRAIN.ctx.ans=null;BRAIN.ctx.conv=null;$('#starters').hidden=false;greetBot()};
     $('#sendChat').onclick=sendChat;
@@ -8758,40 +9275,88 @@ function renderAssistant(){
     $('#chatIn').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat()}else if(e.key==='ArrowUp'&&!$('#chatIn').value.includes('\n')&&chatLog.length){e.preventDefault();histIdx=histIdx<0?chatLog.length-1:Math.max(0,histIdx-1);$('#chatIn').value=chatLog[histIdx]}else if(e.key==='ArrowDown'&&histIdx>=0){e.preventDefault();histIdx++;if(histIdx>=chatLog.length){histIdx=-1;$('#chatIn').value=''}else $('#chatIn').value=chatLog[histIdx]}}}
   else if(ZS){ZS.wake();ZS.C.act('hop',600);ZS.C.emote('happy',1600)}
   refreshAi();setTimeout(()=>{const i=$('#chatIn');if(i&&matchMedia('(min-width:600px) and (pointer:fine)').matches)i.focus({preventScroll:true})},60)}
-function greetBot(){const n=BRAIN.mem.user,h=new Date().getHours(),hi=h<5?'Hello, night owl':h<12?'Good morning':h<17?'Good afternoon':h<22?'Good evening':'Hello';
-  const bio='I\'m **'+BRAIN.mem.bot+'**, your offline assistant. I run right here on your device with no internet or API. Ask me to calculate, convert, translate a phrase, answer a quick fact, write a letter or find the right tool. Type **help** to see everything.';
+function greetBot(){const n=BRAIN.mem.user,h=new Date().getHours(),hi=h<5||h>=22?tx('gh'):h<12?tx('gm'):h<17?tx('ga'):tx('ge');
+  const bot=BRAIN.mem.bot,bio=tx('bio',{bot});
   addBot({md:hi+(n?', '+n:'')+'! '+bio});
-  if(ZS)ZS.say(hi+(n?', '+n:'')+'! I\'m '+BRAIN.mem.bot+'. Ask me anything, or tap me to say hi.','joy')}
+  if(ZS)ZS.say(hi+(n?', '+n:'')+'! '+tx('imz',{bot}),'joy',null,{lang:I18N.cur})}
 let busy=false;
 async function sendChat(){
   const inp=$('#chatIn'),text=inp.value.trim();if(!text||busy)return;busy=true;
   inp.value='';inp.style.height='auto';chatLog.push(text);histIdx=-1;addMsg(text,'user');
   const stc=$('#starters');if(stc)stc.hidden=true;
-  if(ZS){ZS.wake();ZS.stop();ZS.C.emote('think');ZS.C.act('tilt',1200);$('#zbub').textContent='Let me think…'}
+  if(ZS){ZS.wake();ZS.stop();ZS.C.emote('think');ZS.C.act('tilt',1200);$('#zbub').textContent=tx('thinking')}
   let dots=null;if(BRAIN.mem.typing!==false){dots=document.createElement('div');dots.className='msg assistant typing';dots.innerHTML='<span></span><span></span><span></span>';$('#msgs').appendChild(dots);toEnd()}
   try{const[r]=await Promise.all([BRAIN.ask(text),new Promise(z=>setTimeout(z,BRAIN.mem.typing!==false?Math.min(900,280+text.length*4):0))]);if(dots)dots.remove();addBot(r);if(ZS)ZS.say(MASCOT.plain(r.md),MASCOT.moodOf(r,text))}
-  catch(e){if(dots)dots.remove();addBot({md:'Something went wrong: '+e.message});if(ZS)ZS.say('Oops, something went wrong on my side.','sad')}
+  catch(e){if(dots)dots.remove();addBot({md:'Something went wrong: '+e.message});if(ZS)ZS.say(tx('oops'),'sad',null,{lang:I18N.cur})}
   finally{busy=false}}
+
+/* ---- language and voice ---- */
+function relangAll(){
+  buildNav();I18N.applyDir();
+  ['dashboard','tools','assistant'].forEach(v=>{const el=$('#v-'+v);if(el){el.innerHTML='';delete el.dataset.ready}});
+  if(ZS){ZS.stop();ZS=null}
+  MASCOT.relang();
+  const sc=screen().scrollTop;renderSettings();screen().scrollTop=sc}
+const MICS=(()=>{const o=[['en-IN','English (India)'],['en-US','English (US)'],['en-GB','English (UK)']];I18N.LANGS.forEach(l=>{if(l.c!=='en')o.push([l.v,l.n+' · '+l.e])});return o})();
+function langCard(){
+  const L=I18N.LANGS,opt=(v,t,sel)=>'<option value="'+esc(v)+'"'+(sel?' selected':'')+'>'+esc(t)+'</option>',P=MASCOT.prefs;
+  let h='<div class="card" id="langcard"><div class="cardhead"><div><h2>'+esc(tx('langvoice'))+'</h2><p>'+esc(I18N.cur==='en'?'Menus and labels are translated. ZXVI answers in English and can read its answers out loud.':tx('enhint'))+'</p></div></div><div class="fields">'+
+    '<label class="f"><span>'+esc(tx('langlabel'))+'</span><select id="langsel">'+L.map(l=>opt(l.c,l.n+(l.c==='en'?'':' · '+l.e),l.c===I18N.cur)).join('')+'</select></label>'+
+    (MASCOT.hasMic?'<label class="f"><span>'+esc(tx('micl'))+'</span><select id="micsel">'+MICS.map(m=>opt(m[0],m[1],m[0]===P.mic)).join('')+'</select></label>':'');
+  if(MASCOT.hasVoice){
+    h+='<label class="f chk full"><input id="zvoicec" type="checkbox"'+(P.voice?' checked':'')+'> '+esc(tx('speakreplies'))+'</label>'+
+      '<label class="f"><span>'+esc(tx('voicepick'))+'</span><select id="vsel"></select></label>'+
+      '<label class="f" id="vlwrap" hidden><span id="vllab"></span><select id="vlsel"></select></label>'+
+      '<label class="f"><span>'+esc(tx('rate'))+' · <output id="rateo"></output></span><input id="rater" type="range" min="0.6" max="1.4" step="0.05" value="'+(P.rate||1)+'"></label>'+
+      '<label class="f"><span>'+esc(tx('pitch'))+' · <output id="pitcho"></output></span><input id="pitchr" type="range" min="0.7" max="1.6" step="0.05" value="'+(P.pitch||1.1)+'"></label>'+
+      '</div><div class="row" style="margin-top:14px"><button class="btn pri" id="vtest" type="button">'+SPK+' '+esc(tx('testvoice'))+'</button></div><p id="vnote" class="muted" aria-live="polite" style="margin:10px 0 0"></p></div>'}
+  else h+='</div><p class="muted" style="margin:10px 0 0">This browser cannot speak aloud, so voice replies are not available here. Chrome, Edge, Safari and Firefox on most phones and computers can.</p></div>';
+  return h}
+function bindLang(){
+  const P=MASCOT.prefs,ls=$('#langsel');if(!ls)return;
+  ls.onchange=e=>{I18N.set(e.target.value);relangAll()};
+  const ms=$('#micsel');if(ms)ms.onchange=e=>{P.mic=e.target.value;MASCOT.savePrefs()};
+  if(!MASCOT.hasVoice)return;
+  const zv=$('#zvoicec');zv.onchange=e=>{P.voice=e.target.checked;MASCOT.savePrefs();if(!e.target.checked)MASCOT.stopSpeak();else MASCOT.speak('Voice is on.',{lang:'en'})};
+  const fill=()=>{
+    const en=MASCOT.voicesFor('en'),vs=$('#vsel');if(!vs)return;
+    const o=(v,t,sel)=>'<option value="'+esc(v)+'"'+(sel?' selected':'')+'>'+esc(t)+'</option>';
+    vs.innerHTML=o('','Automatic (best available)',!P.vname)+en.map(v=>o(v.name,v.name+' · '+v.lang,v.name===P.vname)).join('');
+    const c=I18N.cur,w=$('#vlwrap');
+    if(c==='en'){w.hidden=true}else{
+      const lv=MASCOT.voicesFor(c),info=I18N.info();w.hidden=false;$('#vllab').textContent=info.e+' voice (for menu text only)';
+      $('#vlsel').innerHTML=lv.length?o('','Automatic',!(P.vmap&&P.vmap[c]))+lv.map(v=>o(v.name,v.name+' · '+v.lang,P.vmap&&P.vmap[c]===v.name)).join(''):o('','Not installed on this device',true);
+      $('#vlsel').disabled=!lv.length}
+    $('#vnote').textContent=en.length?'':'No English voice was found yet. Some browsers load voices a moment after opening. If this stays empty, install one in your device speech settings.'};
+  fill();[400,1500,3500].forEach(ms=>setTimeout(()=>{if($('#vsel')&&!MASCOT.voicesFor('en').length||$('#vsel')&&$('#vsel').options.length<2)fill()},ms));
+  try{speechSynthesis.addEventListener('voiceschanged',fill)}catch(e){}
+  $('#vsel').onchange=e=>{P.vname=e.target.value;MASCOT.savePrefs()};
+  $('#vlsel').onchange=e=>{P.vmap=P.vmap||{};P.vmap[I18N.cur]=e.target.value;MASCOT.savePrefs()};
+  const ro=$('#rateo'),po=$('#pitcho'),r=$('#rater'),pt=$('#pitchr');
+  const sync=()=>{ro.textContent=(+r.value).toFixed(2)+'×';po.textContent=(+pt.value).toFixed(2)};sync();
+  r.oninput=()=>{P.rate=+r.value;sync()};pt.oninput=()=>{P.pitch=+pt.value;sync()};r.onchange=pt.onchange=()=>MASCOT.savePrefs();
+  $('#vtest').onclick=()=>{const bot=BRAIN.mem.bot;MASCOT.savePrefs();
+    const ok=MASCOT.speak('Hi! I am '+bot+'. I can speak English out loud, and I can read my answers to you.',{lang:'en',force:true,onend:()=>{if(I18N.cur!=='en')MASCOT.speak(tx('imz',{bot}),{lang:I18N.cur,force:true})}});
+    $('#vnote').textContent=ok?'':'This device has no voice to speak with.'}}
 
 /* ---- settings ---- */
 function renderSettings(){
   const el=$('#v-ai-settings');const M=BRAIN.mem;
-  el.innerHTML='<div class="vhead"><div class="kicker">Make it yours</div><h1 class="ttl">Settings</h1><p class="sub">ZXVI Core is written from scratch in JavaScript. It has no API key, no account and no internet connection, so there is nothing to set up.</p></div>'+
-    '<div class="card"><div class="cardhead"><div><h2>Appearance</h2><p>Light, dark, or follow your device. Or pick one of '+THEMES.length+' colour themes below.</p></div></div><div class="seg themeSeg"><button data-m="system">System</button><button data-m="light">Light</button><button data-m="dark">Dark</button></div><div id="setThemes" style="margin-top:6px"></div></div>'+
-    '<button class="rowbtn card" data-go="profile" style="border:0"><span class="ava mine">'+avatarInner()+'</span><span><strong>Profile</strong><small>Name, avatar and backup</small></span></button>'+
-    '<div class="card"><div class="cardhead"><div><h2>Personalise</h2><p>Saved on this device only</p></div></div>'+
+  el.innerHTML='<div class="vhead"><div class="kicker">'+esc(tx('kicker'))+'</div><h1 class="ttl">'+esc(tx('settings'))+'</h1><p class="sub">ZXVI Core is written from scratch in JavaScript. It has no API key, no account and no internet connection, so there is nothing to set up.</p></div>'+
+    ''+langCard()+'<div class="card"><div class="cardhead"><div><h2>'+esc(tx('appearance'))+'</h2><p>Light, dark, or follow your device. Or pick one of '+THEMES.length+' colour themes below.</p></div></div><div class="seg themeSeg"><button data-m="system">'+esc(tx('sys'))+'</button><button data-m="light">'+esc(tx('light'))+'</button><button data-m="dark">'+esc(tx('dark'))+'</button></div><div id="setThemes" style="margin-top:6px"></div></div>'+
+    '<button class="rowbtn card" data-go="profile" style="border:0"><span class="ava mine">'+avatarInner()+'</span><span><strong>'+esc(tx('profile'))+'</strong><small>Name, avatar and backup</small></span></button>'+
+    '<div class="card"><div class="cardhead"><div><h2>'+esc(tx('personalise'))+'</h2><p>Saved on this device only</p></div></div>'+
     '<div class="fields"><label class="f"><span>Assistant name</span><input id="sb" type="text" maxlength="20" value="'+esc(M.bot)+'"></label><label class="f"><span>Your name</span><input id="su" type="text" maxlength="30" value="'+esc(M.user)+'" placeholder="Optional"></label><label class="f chk full"><input id="st" type="checkbox"'+(M.typing!==false?' checked':'')+'> Show a short typing animation</label></div>'+
     '<div class="row" style="margin-top:14px"><button class="btn pri" id="ssave">Save</button></div><p id="smsg" class="muted" aria-live="polite" style="margin:10px 0 0"></p></div>'+
-    '<div class="card"><div class="cardhead"><div><h2>Mascot and AI</h2><p>Saved on this device only</p></div></div><div class="fields"><label class="f chk full"><input id="zfabc" type="checkbox"'+(MASCOT.prefs.fab?' checked':'')+'> Show the floating ZXVI mascot on every page</label>'+
+    '<div class="card"><div class="cardhead"><div><h2>'+esc(tx('mascotai'))+'</h2><p>Saved on this device only</p></div></div><div class="fields"><label class="f chk full"><input id="zfabc" type="checkbox"'+(MASCOT.prefs.fab?' checked':'')+'> Show the floating ZXVI mascot on every page</label>'+
     '<label class="f chk full"><input id="zanimc" type="checkbox"'+(MASCOT.prefs.anim?' checked':'')+'> Idle animations (looks around, naps when you are away)</label>'+
-    (MASCOT.hasVoice?'<label class="f chk full"><input id="zvoicec" type="checkbox"'+(MASCOT.prefs.voice?' checked':'')+'> Speak replies aloud (uses your device voice)</label>':'')+
     '<label class="f chk full"><input id="zllmc" type="checkbox"'+(M.llm?' checked':'')+'> Use my browser\'s built-in AI for questions I can\'t answer (experimental)</label></div><p id="zllmst" class="muted" style="margin:10px 0 0" aria-live="polite"></p></div>'+
     '<div class="card"><div class="cardhead"><div><h2>What it remembers</h2><p>Things you asked it to remember</p></div><button class="btn sm" id="sforget">Forget all</button></div><div id="sfacts"></div></div>'+
     '<div class="card"><div class="cardhead"><div><h2>Skills</h2><p>Tap an example to try it</p></div></div><div class="rows" id="sskills">'+BRAIN.skills.map(s=>'<div class="rowbtn" style="align-items:flex-start"><span class="ic">'+MASCOT.mini(20)+'</span><span><strong>'+esc(s.title)+'</strong><small>'+s.ex.map(x=>'<a href="#" class="tryq" data-q="'+esc(x)+'">'+esc(x)+'</a>').join(' · ')+'</small></span></div>').join('')+'</div>'+
     '<div class="notice" style="margin-top:14px"><b>How it works:</b> ZXVI is not a large language model. It is a rule-and-retrieval assistant: your message is matched against hand-written skills, then it uses the app\'s own maths parser, unit tables, date logic, QR encoder, an offline knowledge pack (geography, science, history, language and coding facts, translations of common phrases, letter templates) and a search over all '+NT+' tools. It never guesses, so when it does not know something it says so. If your browser has built-in AI, you can switch that on above as a fallback.</div></div>';
   $('#zfabc').onchange=e=>{MASCOT.prefs.fab=e.target.checked;MASCOT.savePrefs();MASCOT.syncFab()};
   $('#zanimc').onchange=e=>{MASCOT.prefs.anim=e.target.checked;MASCOT.savePrefs()};
-  const zvc=$('#zvoicec');if(zvc)zvc.onchange=e=>{MASCOT.prefs.voice=e.target.checked;MASCOT.savePrefs();if(!e.target.checked)MASCOT.stopSpeak();else MASCOT.speak('Voice is on.')};
+  bindLang();
   const llmSt=async()=>{const st=await BRAIN.llm.status();$('#zllmst').textContent=st==='available'?'Built-in AI is available on this browser. It runs on your device.':st==='downloadable'||st==='downloading'?'Your browser can download its built-in AI model on request. It is a one-time download of a few GB. Turn this on and ask a hard question to start it.':'Not available in this browser, so I will keep using my built-in knowledge. Recent desktop Chrome with the Prompt API enabled supports it.'};
   $('#zllmc').onchange=e=>{M.llm=e.target.checked;BRAIN.save();llmSt()};llmSt();
   applyTheme(theme);$('.themeSeg').onclick=e=>{const b=e.target.closest('button');if(b){setTheme(b.dataset.m);$('#setThemes').innerHTML=themeGridHtml()}};$('#setThemes').innerHTML=themeGridHtml();bindThemeGrid($('#setThemes'));

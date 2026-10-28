@@ -4,7 +4,7 @@ A single-file, **fully offline** toolkit with **219 tools** – no API keys, no 
 
 - **Mobile-app style UI** that becomes a true full-window desktop workspace on wide screens
 - **Smart search** – type what you want to do ("shrink a photo", "solve a sudoku from a picture") and it finds the tool
-- **ZXVI mascot assistant** – a tappable anime-style mascot that reacts to what you ask (expressions, eye tracking, speech bubble, optional voice) and a bigger offline knowledge pack: countries and capitals, Indian states, the periodic table, full forms, phrases in 12 languages, letter templates, code answers and more. It is rule and retrieval based (not an LLM) and can optionally use your browser's built-in AI as a fallback
+- **ZXVI mascot assistant** – a tappable pink-haired anime lab-coat mascot that reacts to what you ask (expressions, eye tracking, speech bubble). It speaks English out loud with a voice picker, understands "which tool can make a PDF?" style questions, supports voice input on browsers that allow it, offers menus in 20 languages, and has a bigger offline knowledge pack: countries and capitals, Indian states, the periodic table, full forms, phrases in 12 languages, letter templates, code answers and more. It is rule and retrieval based (not an LLM) and can optionally use your browser's built-in AI as a fallback
 - **40 colour themes** (plus light / dark / system), saved on the device
 - **Word Search solver** – type or *scan a photo of a puzzle* (offline OCR), then reveal answers one by one or print the solved sheet
 - **Sudoku** – play, generate, type your own, or *scan a photo* and solve it step by step
