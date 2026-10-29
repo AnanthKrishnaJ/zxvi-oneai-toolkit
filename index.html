@@ -1234,7 +1234,6 @@ const KFILES={"config.json": "{\"model_type\":\"style_text_to_speech_2\"}", "tok
 /* jsDelivr first. The claude.ai artifact viewer blocks every download from another site (only scripts may load from
    jsDelivr), so there the same bytes come from this artifact's own asset store: base64 text chunks, decoded here.
    Either way the model and the ONNX Runtime engine are checked by SHA-256 before use. */
-const kf0=window.fetch.bind(window);
 const KSRC={
   model:{size:92361116,sha256:'fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478',
     cdn:[0,1,2,3,4,5].map(i=>'https://cdn.jsdelivr.net/npm/kokoro-q8-shards@1.0.0/kokoro-q8.part'+i+'.bin'),
@@ -1243,34 +1242,57 @@ const KSRC={
     cdn:['https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1/dist/ort-wasm-simd-threaded.jsep.wasm'],
     blobs:['15428e438d52a481c5e1658ade89596c','e6bcbf1e0cae6ff31df0fe467d9f0ffb']}};
 const KVOICEBLOB='5800fbc38744cdf8e9373203ba9fde3a';
-let kokoroProg=null;
-const b64bytes=s=>{if(Uint8Array.fromBase64)return Uint8Array.fromBase64(s);const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u};
-async function kokoroBytes(src,file){
-  const out=new Uint8Array(src.size);let off=0;
-  const put=u=>{if(off+u.length>out.length)throw new Error('Voice file is the wrong size');out.set(u,off);off+=u.length;if(kokoroProg)kokoroProg({status:'progress',file,loaded:off,total:src.size})};
-  try{for(const u of src.cdn){const r=await kf0(u);if(!r.ok)throw new Error(String(r.status));const rd=r.body.getReader();for(;;){const{done,value}=await rd.read();if(done)break;put(value)}}}
-  catch(e){off=0;for(const id of src.blobs){const r=await kf0('/_blob/'+id);if(!r.ok)throw new Error('Voice file download failed ('+r.status+')');put(b64bytes(await r.text()))}}
-  if(off!==src.size)throw new Error('Voice file is the wrong size');
-  const h=[...new Uint8Array(await crypto.subtle.digest('SHA-256',out))].map(b=>b.toString(16).padStart(2,'0')).join('');
-  if(h!==src.sha256)throw new Error('Voice file failed its integrity check');
-  return out}
-let kVoices=null;
-async function kokoroVoice(p,init){
-  try{const r=await kf0('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/'+p,init);if(r.ok)return r}catch(e){}
-  if(!kVoices)kVoices=kf0('/_blob/'+KVOICEBLOB).then(r=>{if(!r.ok)throw new Error('Voice download failed ('+r.status+')');return r.json()}).catch(e=>{kVoices=null;throw e});
-  const b=(await kVoices)[p.slice(7,-4)];
-  return b?new Response(b64bytes(b),{headers:{'content-type':'application/octet-stream'}}):new Response('',{status:404,statusText:'Not Found'})}
-window.fetch=(input,init)=>{const url=typeof input==='string'?input:input instanceof URL?input.href:input&&input.url||'';
-  if(/\/ort-wasm-simd-threaded\.jsep\.wasm(\?|$)/.test(url))return kokoroBytes(KSRC.wasm,'engine').then(u=>new Response(u,{headers:{'content-type':'application/wasm'}}));
-  if(!url.startsWith(KHF))return /^https?:/.test(url)&&!url.startsWith(location.origin)?kf0(input,init).catch(e=>{throw new Error((e&&e.message||'Failed to fetch')+' '+url.replace(/^https?:\/\//,'').slice(0,90))}):kf0(input,init);
-  const p=url.slice(KHF.length).split('?')[0];
-  if(KFILES[p]!=null)return Promise.resolve(new Response(KFILES[p],{headers:{'content-type':'application/json'}}));
-  if(p==='onnx/model_quantized.onnx')return kokoroBytes(KSRC.model,p).then(u=>new Response(u,{headers:{'content-type':'application/octet-stream','content-length':String(u.length)}}));
-  if(/^voices\/[a-z]{2}_[a-z]+\.bin$/.test(p))return kokoroVoice(p,init);
-  return Promise.resolve(new Response('',{status:404,statusText:'Not Found'}))};
+/* Everything Kokoro needs, as one function so it can run inside a worker (its source is sent there with toString,
+   along with the constants above) or, if the viewer refuses workers, on this page. `scope` is self or window. */
+function kokoroEnv(scope,origin){
+  const kf0=scope.fetch.bind(scope);let prog=null,kVoices=null;
+  const b64bytes=s=>{if(Uint8Array.fromBase64)return Uint8Array.fromBase64(s);const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u};
+  async function bytes(src,file){
+    const out=new Uint8Array(src.size);let off=0;
+    const put=u=>{if(off+u.length>out.length)throw new Error('Voice file is the wrong size');out.set(u,off);off+=u.length;if(prog)prog({status:'progress',file,loaded:off,total:src.size})};
+    try{for(const u of src.cdn){const r=await kf0(u);if(!r.ok)throw new Error(String(r.status));const rd=r.body.getReader();for(;;){const{done,value}=await rd.read();if(done)break;put(value)}}}
+    catch(e){off=0;for(const id of src.blobs){const r=await kf0(origin+'/_blob/'+id);if(!r.ok)throw new Error('Voice file download failed ('+r.status+')');put(b64bytes(await r.text()))}}
+    if(off!==src.size)throw new Error('Voice file is the wrong size');
+    const h=[...new Uint8Array(await crypto.subtle.digest('SHA-256',out))].map(b=>b.toString(16).padStart(2,'0')).join('');
+    if(h!==src.sha256)throw new Error('Voice file failed its integrity check');
+    return out}
+  async function voice(p,init){
+    try{const r=await kf0('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/'+p,init);if(r.ok)return r}catch(e){}
+    if(!kVoices)kVoices=kf0(origin+'/_blob/'+KVOICEBLOB).then(r=>{if(!r.ok)throw new Error('Voice download failed ('+r.status+')');return r.json()}).catch(e=>{kVoices=null;throw e});
+    const b=(await kVoices)[p.slice(7,-4)];
+    return b?new Response(b64bytes(b),{headers:{'content-type':'application/octet-stream'}}):new Response('',{status:404,statusText:'Not Found'})}
+  scope.fetch=(input,init)=>{const url=typeof input==='string'?input:input instanceof URL?input.href:input&&input.url||'';
+    if(/\/ort-wasm-simd-threaded\.jsep\.wasm(\?|$)/.test(url))return bytes(KSRC.wasm,'engine').then(u=>new Response(u,{headers:{'content-type':'application/wasm'}}));
+    if(!url.startsWith(KHF))return /^https?:/.test(url)&&!url.startsWith(origin)?kf0(input,init).catch(e=>{throw new Error((e&&e.message||'Failed to fetch')+' '+url.replace(/^https?:\/\//,'').slice(0,90))}):kf0(input,init);
+    const p=url.slice(KHF.length).split('?')[0];
+    if(KFILES[p]!=null)return Promise.resolve(new Response(KFILES[p],{headers:{'content-type':'application/json'}}));
+    if(p==='onnx/model_quantized.onnx')return bytes(KSRC.model,p).then(u=>new Response(u,{headers:{'content-type':'application/octet-stream','content-length':String(u.length)}}));
+    if(/^voices\/[a-z]{2}_[a-z]+\.bin$/.test(p))return voice(p,init);
+    return Promise.resolve(new Response('',{status:404,statusText:'Not Found'}))};
+  /* processor only: on WebGPU (tested on an AMD RDNA 3 card) Kokoro's output came out quiet and with a click */
+  return{load:async onProg=>{prog=onProg||null;const{KokoroTTS}=await import('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm');
+    return KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',{dtype:'q8',device:'wasm',progress_callback:onProg})}}}
+/* the worker's side: load once, then turn text into audio on request */
+function kokoroWorkerMain(origin){
+  const env=kokoroEnv(self,origin);let tts=null;
+  self.onmessage=async e=>{const m=e.data;
+    try{if(m.type==='load'){if(!tts)tts=await env.load(p=>{if(p&&p.status==='progress'&&p.total)self.postMessage({type:'progress',file:p.file,loaded:p.loaded,total:p.total})});self.postMessage({id:m.id,ok:true})}
+      else if(m.type==='gen'){const a=await tts.generate(m.text,{voice:m.voice,speed:m.speed});const audio=a.audio;self.postMessage({id:m.id,ok:true,audio,rate:a.sampling_rate},[audio.buffer])}}
+    catch(err){self.postMessage({id:m.id,ok:false,error:String(err&&err.message||err)})}}}
+/* the page's side: same generate() shape as KokoroTTS, so callers don't care where it runs */
+function kokoroInWorker(onProg){return new Promise((resolve,reject)=>{
+  const src='const KHF='+JSON.stringify(KHF)+',KFILES='+JSON.stringify(KFILES)+',KSRC='+JSON.stringify(KSRC)+',KVOICEBLOB='+JSON.stringify(KVOICEBLOB)+';\n'+kokoroEnv+'\n'+kokoroWorkerMain+'\nkokoroWorkerMain('+JSON.stringify(location.origin)+');';
+  let w;try{w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})),{type:'module'})}catch(e){return reject(e)}
+  let n=0;const wait=new Map();
+  const call=msg=>new Promise((res,rej)=>{const id=++n;wait.set(id,{res,rej});w.postMessage({...msg,id})});
+  w.onerror=e=>{if(e.preventDefault)e.preventDefault();const err=new Error('The voice worker could not start'+(e.message?' ('+e.message+')':''));for(const p of wait.values())p.rej(err);wait.clear();w.terminate();reject(err)};
+  w.onmessage=e=>{const m=e.data;if(m.type==='progress'){if(onProg)onProg({status:'progress',file:m.file,loaded:m.loaded,total:m.total});return}
+    const p=wait.get(m.id);if(!p)return;wait.delete(m.id);if(m.ok)p.res(m);else p.rej(new Error(m.error))};
+  call({type:'load'}).then(()=>resolve({inWorker:true,generate:(text,o)=>call({type:'gen',text,voice:o.voice,speed:o.speed||1}).then(m=>({audio:m.audio,sampling_rate:m.rate}))}),e=>{w.terminate();reject(e)})})}
 let KOK=null,KOKREADY=null;
-/* processor only: on WebGPU (tested on an AMD RDNA 3 card) Kokoro's output came out quiet and with a click */
-function kokoro(onProg){if(!KOK){kokoroProg=onProg||null;KOK=import('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm').then(m=>m.KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',{dtype:'q8',device:'wasm',progress_callback:onProg})).then(t=>{store.set('kokoroOk',true);return KOKREADY=t}).catch(e=>{KOK=null;throw e})}return KOK}
+/* a worker keeps the page responsive while the voice loads and speaks; if the viewer refuses one, it runs on the page */
+function kokoro(onProg){if(!KOK){KOK=kokoroInWorker(onProg).catch(e=>{console.warn('Kokoro worker unavailable, running on the page:',e);return kokoroEnv(window,location.origin).load(onProg)})
+  .then(t=>{store.set('kokoroOk',true);return KOKREADY=t}).catch(e=>{KOK=null;throw e})}return KOK}
 const KVOICES=[['af_heart','Heart (US, female)'],['af_bella','Bella (US, female)'],['af_nicole','Nicole (US, female, soft)'],['af_sarah','Sarah (US, female)'],['af_sky','Sky (US, female)'],['bf_emma','Emma (UK, female)'],['bf_isabella','Isabella (UK, female)']];
 const chunkText=s=>{const out=[];let cur='';for(const p of (s.match(/[^.!?\n]+[.!?]*\s*|\n+/g)||[])){if(!p.trim())continue;if((cur+p).length>280&&cur){out.push(cur.trim());cur=''}cur+=p}if(cur.trim())out.push(cur.trim());return out};
 /* a short first piece, so the voice starts while the rest is still being generated */
