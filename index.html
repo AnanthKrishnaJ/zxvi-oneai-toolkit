@@ -440,6 +440,9 @@ mark{background:#ffc83d66;color:inherit;border-radius:3px}
 'use strict';
 const $=(s,r=document)=>r.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* ZXVI is said "swevy": every voice in the app reads it that way */
+const sayFix=s=>String(s).replace(/\bZ\.?X\.?V\.?I\b/gi,'Swevee');
+if(window.SpeechSynthesisUtterance){const U=window.SpeechSynthesisUtterance;window.SpeechSynthesisUtterance=class extends U{constructor(t){super(sayFix(t==null?'':t))}}}
 const CATS=['Text','Developer','Convert','Date & Time','Math','Finance','Health','Generators','Puzzles','Media','Utilities','PDF tools','Soumya unique tools','Keerthana unique tools','Ananth unique tools','Sanjay unique tools'];
 const DEVSEC='Soumya unique tools',DEVBY='Soumya',KSEC='Keerthana unique tools',KBY='Keerthana',ASEC='Ananth unique tools',ABY='Ananth',SSEC='Sanjay unique tools',SBY='Sanjay',SECBY={[DEVSEC]:DEVBY,[KSEC]:KBY,[ASEC]:ABY,[SSEC]:SBY};
 const TOOLS=[],BYID={};
@@ -453,7 +456,7 @@ const lines=s=>s.split(/\r?\n/);
 const nums=s=>(s.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi)||[]).map(Number);
 const rnd=n=>{const a=new Uint32Array(1);const lim=Math.floor(4294967296/n)*n;let x;do{crypto.getRandomValues(a);x=a[0]}while(x>=lim);return x%n};
 const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=rnd(i+1);[a[i],a[j]]=[a[j],a[i]]}return a};
-let _toastT;function toast(m){let t=$('.toast');if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t)}t.textContent=m;t.hidden=false;clearTimeout(_toastT);_toastT=setTimeout(()=>t.hidden=true,1600)}
+let _toastT;function toast(m,ms){let t=$('.toast');if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t)}t.textContent=m;t.hidden=false;clearTimeout(_toastT);_toastT=setTimeout(()=>t.hidden=true,ms||1600)}
 async function copyText(s,srcEl){try{await navigator.clipboard.writeText(s);toast('Copied');return}catch(e){}
   try{const ta=document.createElement('textarea');ta.value=s;ta.style.cssText='position:fixed;opacity:0';document.body.appendChild(ta);ta.select();const ok=document.execCommand('copy');ta.remove();toast(ok?'Copied':'Select the text and copy it')}catch(e){toast('Select the text and copy it')}}
 async function saveFile(name,data){
@@ -1222,14 +1225,49 @@ custom('tone-generator','Tone Generator','Media','Play a pure tone at any freque
   $('#tn',box).oninput=()=>{$('#tfv',box).textContent=freq();if(o)o.frequency.value=freq()};$('#tw',box).onchange=()=>{if(o)o.type=$('#tw',box).value};$('#tv',box).oninput=()=>{if(g)g.gain.value=$('#tv',box).value/100*.5};
   $('#tg',box).onclick=()=>{if(o)return stop();const c=ac();c.resume&&c.resume();o=c.createOscillator();g=c.createGain();o.type=$('#tw',box).value;o.frequency.value=freq();g.gain.value=$('#tv',box).value/100*.5;o.connect(g);g.connect(c.destination);o.start();$('#tg',box).textContent='Stop'};
   return stop},{kw:'sound hz frequency audio'});
-custom('text-to-speech','Text to Speech','Media','Hear any text read aloud with the voices on your device.',box=>{
-  if(!('speechSynthesis' in window)){box.innerHTML='<div class="panel err">This browser does not support speech synthesis.</div>';return}
-  box.innerHTML='<div class="panel"><div class="fields"><label class="f full"><span>Text</span><textarea id="tt" rows="4">Hello! This is the One AI Toolkit reading text aloud.</textarea></label><label class="f"><span>Voice</span><select id="tv"></select></label><label class="f"><span>Speed: <b id="trv">1</b>×</span><input id="tr" type="range" min="0.5" max="2" step="0.1" value="1"></label><label class="f"><span>Pitch: <b id="tpv">1</b></span><input id="tp" type="range" min="0.5" max="2" step="0.1" value="1"></label></div><div class="row" style="margin-top:12px"><button class="btn pri" id="tgo">Speak</button><button class="btn" id="tps">Pause</button><button class="btn" id="tx">Stop</button></div><p class="muted" id="tmsg"></p></div>';
-  const fill=()=>{const v=speechSynthesis.getVoices();$('#tv',box).innerHTML=v.length?v.map((x,i)=>'<option value="'+i+'">'+esc(x.name+' ('+x.lang+')')+'</option>').join(''):'<option>Default voice</option>'};fill();speechSynthesis.onvoiceschanged=fill;
-  $('#tr',box).oninput=()=>$('#trv',box).textContent=$('#tr',box).value;$('#tp',box).oninput=()=>$('#tpv',box).textContent=$('#tp',box).value;
-  $('#tgo',box).onclick=()=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance($('#tt',box).value);const v=speechSynthesis.getVoices()[+$('#tv',box).value];if(v){u.voice=v;u.lang=v.lang}u.rate=+$('#tr',box).value;u.pitch=+$('#tp',box).value;u.onerror=e=>$('#tmsg',box).textContent='Speech error: '+(e.error||'unknown');u.onend=()=>$('#tmsg',box).textContent='';$('#tmsg',box).textContent='Speaking…';speechSynthesis.speak(u)};
-  $('#tps',box).onclick=()=>{if(speechSynthesis.paused){speechSynthesis.resume();$('#tps',box).textContent='Pause'}else{speechSynthesis.pause();$('#tps',box).textContent='Resume'}};$('#tx',box).onclick=()=>{speechSynthesis.cancel();$('#tmsg',box).textContent=''};
-  return()=>{speechSynthesis.cancel();speechSynthesis.onvoiceschanged=null}},{kw:'speak voice read aloud'});
+/* Natural voice: Kokoro-82M runs on this device (WASM). Weights download once, then the browser caches them. */
+let KOK=null,KOKREADY=null;
+/* processor only: on WebGPU (tested on an AMD RDNA 3 card) Kokoro's output came out quiet and with a click */
+function kokoro(onProg){if(!KOK)KOK=import('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm').then(m=>m.KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',{dtype:'q8',device:'wasm',progress_callback:onProg})).then(t=>{store.set('kokoroOk',true);return KOKREADY=t}).catch(e=>{KOK=null;throw e});return KOK}
+const KVOICES=[['af_heart','Heart (US, female)'],['af_bella','Bella (US, female)'],['af_nicole','Nicole (US, female, soft)'],['am_michael','Michael (US, male)'],['am_fenrir','Fenrir (US, male)'],['bf_emma','Emma (UK, female)'],['bm_george','George (UK, male)']];
+const chunkText=s=>{const out=[];let cur='';for(const p of (s.match(/[^.!?\n]+[.!?]*\s*|\n+/g)||[])){if(!p.trim())continue;if((cur+p).length>280&&cur){out.push(cur.trim());cur=''}cur+=p}if(cur.trim())out.push(cur.trim());return out};
+/* a short first piece, so the voice starts while the rest is still being generated */
+const quickStart=parts=>{const p=parts[0]||'';if(p.length<=60)return parts;const m=p.slice(15).search(/[,;:.!?]\s/);let cut=m>=0&&m+16<=70?m+16:p.lastIndexOf(' ',55);if(cut<15)cut=55;return [p.slice(0,cut).trim(),p.slice(cut).trim(),...parts.slice(1)].filter(Boolean)};
+function wavBlob(f32,rate){const b=new ArrayBuffer(44+f32.length*2),d=new DataView(b),w=(o,s)=>{for(let i=0;i<s.length;i++)d.setUint8(o+i,s.charCodeAt(i))};
+  w(0,'RIFF');d.setUint32(4,36+f32.length*2,true);w(8,'WAVE');w(12,'fmt ');d.setUint32(16,16,true);d.setUint16(20,1,true);d.setUint16(22,1,true);d.setUint32(24,rate,true);d.setUint32(28,rate*2,true);d.setUint16(32,2,true);d.setUint16(34,16,true);w(36,'data');d.setUint32(40,f32.length*2,true);
+  for(let i=0;i<f32.length;i++){const x=Math.max(-1,Math.min(1,f32[i]));d.setInt16(44+i*2,x<0?x*0x8000:x*0x7fff,true)}return new Blob([b],{type:'audio/wav'})}
+custom('text-to-speech','Text to Speech','Media','Hear any text read aloud with a natural on-device AI voice (Kokoro) or the voices on your device. Save the AI voice as a WAV file.',box=>{
+  const hasDev='speechSynthesis' in window;
+  box.innerHTML='<div class="panel"><div class="seg" id="teng" style="margin-bottom:14px"><button aria-pressed="true" data-e="ai">Natural AI voice</button><button aria-pressed="false" data-e="dev">Device voices</button></div><div class="fields"><label class="f full"><span>Text</span><textarea id="tt" rows="4">Hello! This is ZXVI, the One AI Toolkit, reading text aloud.</textarea></label><label class="f"><span>Voice</span><select id="tv"></select></label><label class="f"><span>Speed: <b id="trv">1</b>×</span><input id="tr" type="range" min="0.5" max="2" step="0.1" value="1"></label><label class="f" id="tpw" hidden><span>Pitch: <b id="tpv">1</b></span><input id="tp" type="range" min="0.5" max="2" step="0.1" value="1"></label></div><div class="row" style="margin-top:12px"><button class="btn pri" id="tgo">Speak</button><button class="btn" id="tps">Pause</button><button class="btn" id="tx">Stop</button><button class="btn" id="tdl" hidden>Save WAV</button></div><p class="muted" id="tmsg"></p><p class="muted" id="tnote" style="font-size:12px;margin:0">The AI voice runs entirely on your device. The first use downloads the model (about 90 MB) once; after that it works offline. English only.</p></div>';
+  const q=s=>$(s,box),msg=t=>q('#tmsg').textContent=t;
+  let eng='ai',run=0,audio=null,lastWav=null;
+  const fillDev=()=>{if(eng!=='dev')return;const v=hasDev?speechSynthesis.getVoices():[];q('#tv').innerHTML=v.length?v.map((x,i)=>'<option value="'+i+'">'+esc(x.name+' ('+x.lang+')')+'</option>').join(''):'<option>Default voice</option>'};
+  const fillAi=()=>{q('#tv').innerHTML=KVOICES.map(([k,n])=>'<option value="'+k+'">'+esc(n)+'</option>').join('')};
+  const stop=()=>{run++;if(hasDev)speechSynthesis.cancel();if(audio){audio.pause();audio=null}q('#tps').textContent='Pause';msg('')};
+  const setEng=e=>{stop();eng=e;box.querySelectorAll('#teng button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.e===e));q('#tpw').hidden=e==='ai';q('#tnote').hidden=e!=='ai';q('#tdl').hidden=e!=='ai'||!lastWav;e==='ai'?fillAi():fillDev()};
+  box.querySelectorAll('#teng button').forEach(b=>b.onclick=()=>setEng(b.dataset.e));
+  if(hasDev)speechSynthesis.onvoiceschanged=fillDev;
+  q('#tr').oninput=()=>q('#trv').textContent=q('#tr').value;q('#tp').oninput=()=>q('#tpv').textContent=q('#tp').value;
+  const speakDev=()=>{if(!hasDev){msg('This browser has no device voices. Use the Natural AI voice.');return}const u=new SpeechSynthesisUtterance(q('#tt').value);const v=speechSynthesis.getVoices()[+q('#tv').value];if(v){u.voice=v;u.lang=v.lang}u.rate=+q('#tr').value;u.pitch=+q('#tp').value;u.onerror=e=>msg('Speech error: '+(e.error||'unknown'));u.onend=()=>msg('');msg('Speaking…');speechSynthesis.speak(u)};
+  const speakAi=async()=>{const my=run,text=sayFix(q('#tt').value.trim());if(!text){msg('Type something to read.');return}
+    const files={};msg('Loading the AI voice…');let tts;
+    try{tts=await kokoro(p=>{if(my!==run||p.status!=='progress'||!p.total)return;files[p.file]=[p.loaded,p.total];let a=0,b=0;for(const k in files){a+=files[k][0];b+=files[k][1]}msg('Downloading the AI voice (one time): '+Math.round(a/b*100)+'% of '+Math.round(b/1048576)+' MB')})}
+    catch(e){if(my===run)msg('Could not load the AI voice ('+(e&&e.message||e)+'). Switch to Device voices.');return}
+    if(my!==run)return;
+    const parts=quickStart(chunkText(text)),pcm=[],voice=q('#tv').value,speed=+q('#tr').value;let rate=24000;
+    const gen=n=>tts.generate(parts[n],{voice,speed});
+    let next=gen(0);
+    for(let i=0;i<parts.length;i++){msg('Speaking… ('+(i+1)+'/'+parts.length+')');let a;try{a=await next}catch(e){if(my===run)msg('Speech error: '+(e&&e.message||e));return}if(my!==run)return;
+      if(i+1<parts.length)next=gen(i+1);rate=a.sampling_rate;pcm.push(a.audio);
+      const url=URL.createObjectURL(wavBlob(a.audio,rate));audio=new Audio(url);await new Promise(r=>{audio.onended=audio.onerror=r;audio.play().catch(r)});URL.revokeObjectURL(url);if(my!==run)return}
+    let len=0;for(const p of pcm)len+=p.length;const all=new Float32Array(len);let o=0;for(const p of pcm){all.set(p,o);o+=p.length}
+    lastWav=wavBlob(all,rate);q('#tdl').hidden=false;audio=null;msg('Done.')};
+  q('#tgo').onclick=()=>{stop();eng==='ai'?speakAi():speakDev()};
+  q('#tps').onclick=()=>{if(eng==='ai'){if(!audio)return;if(audio.paused){audio.play();q('#tps').textContent='Pause'}else{audio.pause();q('#tps').textContent='Resume'}return}if(!hasDev)return;if(speechSynthesis.paused){speechSynthesis.resume();q('#tps').textContent='Pause'}else{speechSynthesis.pause();q('#tps').textContent='Resume'}};
+  q('#tx').onclick=stop;
+  q('#tdl').onclick=()=>{if(lastWav)saveFile('speech.wav',lastWav)};
+  setEng('ai');
+  return()=>{stop();if(hasDev)speechSynthesis.onvoiceschanged=null}},{kw:'speak voice read aloud kokoro natural ai voice wav'});
 custom('speech-to-text','Speech to Text','Media','Dictate and get a written transcript. Needs microphone access and a supported browser.',box=>{
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   box.innerHTML='<div class="panel"><div class="fields"><label class="f"><span>Language</span><select id="sl"><option value="en-US">English (US)</option><option value="en-GB">English (UK)</option><option value="en-IN">English (India)</option><option value="hi-IN">Hindi</option><option value="ta-IN">Tamil</option><option value="te-IN">Telugu</option><option value="es-ES">Spanish</option><option value="fr-FR">French</option><option value="de-DE">German</option></select></label></div><div class="row" style="margin:12px 0"><button class="btn pri" id="sg">Start listening</button><button class="btn" id="sc">Copy</button><button class="btn" id="sx">Clear</button></div><div id="smsg" class="muted"></div><textarea id="so" rows="8" style="margin-top:10px" placeholder="Your words appear here"></textarea></div>';
@@ -7350,12 +7388,28 @@ const MASCOT=(()=>{
   const isFem=v=>FEM.test(v.name)&&!/\bmale\b(?!.*female)/i.test(v.name),isMale=v=>MALE.test(v.name)&&!FEM.test(v.name);
   const rankV=v=>{let s=0;if(isFem(v))s+=12;if(isMale(v))s-=14;if(GOOD.test(v.name))s+=5;if(/google/i.test(v.name))s+=2;if(v.localService)s+=1;if(/^en-in/.test(langOf(v)))s+=2;else if(/^en-(us|gb)/.test(langOf(v)))s+=1;return s};
   function pickVoice(base){const vs=voicesFor(base);if(!vs.length)return null;const want=base==='en'?prefs.vname:(prefs.vmap&&prefs.vmap[base]);if(want){const f=vs.find(v=>v.name===want);if(f)return f}return vs.slice().sort((a,b)=>rankV(b)-rankV(a))[0]}
-  /* what the voice should actually say: no markdown, no emoji, and ZXVI spelled out so it is not read as gibberish */
-  const tts=t=>String(t).replace(/\bZXVI\b/g,'Z X V I').replace(/\bOneAI\b/g,'One A I').replace(/https?:\/\/\S+/g,' link ').replace(/[`*_#>~|\\]/g,' ').replace(/[^\p{L}\p{M}\p{N}\s.,!?;:'’"()%+\-–—\/=×÷²³।؟。]/gu,' ').replace(/\s+/g,' ').trim();
+  /* what the voice should actually say: no markdown, no emoji, and ZXVI said "swevy" */
+  const tts=t=>sayFix(t).replace(/\bOneAI\b/g,'One A I').replace(/https?:\/\/\S+/g,' link ').replace(/[`*_#>~|\\]/g,' ').replace(/[^\p{L}\p{M}\p{N}\s.,!?;:'’"()%+\-–—\/=×÷²³।؟。]/gu,' ').replace(/\s+/g,' ').trim();
   const chunks=t=>{const s=t.match(/[^.!?।؟。]+[.!?।؟。]*\s*/g)||[t];const out=[];let c='';for(const x of s){if((c+x).length>190&&c){out.push(c.trim());c=x}else c+=x}if(c.trim())out.push(c.trim());return out.length?out:[t]};
-  let speakTok=0;
-  function speak(text,o){o=o||{};if(!synth)return false;if(!prefs.voice&&!o.force)return false;
-    const base=String(o.lang||'en').split('-')[0],v=pickVoice(base);if(!v&&base!=='en')return false;
+  let speakTok=0,aiAudio=null;
+  /* English replies use the natural on-device voice (Kokoro, af_heart) once it has loaded; until then, and for other languages, the device voice speaks */
+  async function speakNatural(tts,parts,o,tok){parts=quickStart(parts);let started=false;const gen=s=>tts.generate(s,{voice:'af_heart',speed:prefs.rate||1});let nx=gen(parts[0]);
+    for(let i=0;i<parts.length;i++){let a;try{a=await nx}catch(e){toast('Natural voice error: '+(e&&e.message||e),8000);break}if(tok!==speakTok)return;if(i+1<parts.length)nx=gen(parts[i+1]);
+      const url=URL.createObjectURL(wavBlob(a.audio,a.sampling_rate));aiAudio=new Audio(url);if(!started){started=true;if(o.onstart)o.onstart()}
+      await new Promise(r=>{aiAudio.onended=aiAudio.onerror=r;aiAudio.play().catch(r)});URL.revokeObjectURL(url);if(tok!==speakTok)return}
+    aiAudio=null;if(tok===speakTok&&o.onend)o.onend()}
+  /* load the natural voice in the background and say on screen how it is going, so a failure is visible */
+  let warming=false;
+  function warmNatural(){if(warming||KOKREADY)return;warming=true;const files={};let last=-1;toast('Loading the natural voice…',4000);
+    let p;try{p=kokoro(e=>{if(e.status!=='progress'||!e.total)return;files[e.file]=[e.loaded,e.total];let a=0,b=0;for(const k in files){a+=files[k][0];b+=files[k][1]}const pc=Math.round(a/b*100);if(pc!==last){last=pc;toast('Natural voice: '+pc+'% of '+Math.round(b/1048576)+' MB',4000)}})}catch(e){p=Promise.reject(e)}
+    p.then(()=>toast('Natural voice ready. The next reply uses it.',5000)).catch(e=>{warming=false;toast('Natural voice failed: '+(e&&e.message||e),10000)})}
+  function speak(text,o){o=o||{};if(!prefs.voice&&!o.force)return false;
+    const base=String(o.lang||'en').split('-')[0];
+    if(base==='en'){const clean=tts(text);if(!clean)return false;if(KOKREADY){stopSpeak();speakNatural(KOKREADY,chunks(clean),o,++speakTok);return true}
+      /* downloaded before: it is only loading from the browser cache, so wait for it rather than fall back to the robotic voice */
+      if(store.get('kokoroOk',false)){stopSpeak();const tok=++speakTok;warmNatural();kokoro().then(t=>{if(tok===speakTok)speakNatural(t,chunks(clean),o,tok)}).catch(()=>{if(tok===speakTok&&o.onend)o.onend()});return true}
+      warmNatural()}
+    if(!synth)return false;const v=pickVoice(base);if(!v&&base!=='en')return false;
     const clean=tts(text);if(!clean)return false;
     try{synth.cancel()}catch(e){}
     const tok=++speakTok,parts=chunks(clean);let n=0,started=false;
@@ -7364,7 +7418,8 @@ const MASCOT=(()=>{
       u.onstart=()=>{if(!started){started=true;if(o.onstart)o.onstart()}};u.onend=next;u.onerror=()=>{if(tok===speakTok&&o.onend)o.onend()};
       try{synth.speak(u)}catch(e){if(o.onend)o.onend()}};
     setTimeout(next,40);return true}
-  function stopSpeak(){speakTok++;try{synth&&synth.cancel()}catch(e){}}
+  function stopSpeak(){speakTok++;try{synth&&synth.cancel()}catch(e){}if(aiAudio){aiAudio.pause();aiAudio=null}}
+  if(prefs.voice&&store.get('kokoroOk',false))setTimeout(()=>{try{kokoro().catch(()=>{})}catch(e){}},1200);
   /* microphone: the browser's own speech recognition (Chrome and Edge send the audio to the browser maker's service, so it needs internet) */
   function listen(o){if(!SR)return null;const r=new SR();r.lang=o.lang||prefs.mic||'en-IN';r.interimResults=true;r.continuous=false;r.maxAlternatives=1;let fin='',it='';
     r.onstart=()=>{if(o.onState)o.onState('listening')};
@@ -9706,3 +9761,4 @@ refreshAi();route();
 
 </body>
 </html>
+
