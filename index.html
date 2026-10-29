@@ -7343,8 +7343,12 @@ const MASCOT=(()=>{
   if(synth){loadVoices();try{synth.addEventListener('voiceschanged',loadVoices)}catch(e){try{synth.onvoiceschanged=loadVoices}catch(_){}}}
   const langOf=v=>String(v.lang||'').replace('_','-').toLowerCase();
   const voicesFor=base=>loadVoices().filter(v=>langOf(v).split('-')[0]===base);
-  const GOOD=/natural|neural|online|enhanced|premium/i,FEM=/female|samantha|zira|aria|jenny|libby|sonia|neerja|heera|veena|tessa|karen|moira|serena|susan|hazel|ava|allison|swara|kalpana|lekha|google uk english female|google us english/i;
-  const rankV=v=>{let s=0;if(GOOD.test(v.name))s+=6;if(/google/i.test(v.name))s+=3;if(FEM.test(v.name))s+=3;if(v.localService)s+=1;if(/^en-in/.test(langOf(v)))s+=2;else if(/^en-(us|gb)/.test(langOf(v)))s+=1;return s};
+  const GOOD=/natural|neural|online|enhanced|premium/i;
+  /* ZXVI is a girl, so female voices win by a wide margin and anything that sounds male is pushed down */
+  const FEM=/female|woman|samantha|zira|aria|jenny|libby|sonia|neerja|heera|veena|tessa|karen|moira|serena|susan|hazel|ava|allison|swara|kalpana|lekha|google uk english female|google us english|amy|emma|joanna|kendra|kimberly|salli|ivy|nicole|olivia|natasha|clara|fiona|victoria|catherine|isha|priya|sangeeta|raveena|shruti|aditi|tara|siri/i;
+  const MALE=/\bmale\b(?!.*female)|david|mark\b|james|ravi|hemant|rishi|george|daniel|alex\b|fred\b|guy\b|brian|christopher|eric\b|roger|ryan|thomas|prabhat|arthur|oliver|matthew|joey|justin|kevin|russell|geraint|liam|william|sean\b|aaron|lee\b/i;
+  const isFem=v=>FEM.test(v.name)&&!/\bmale\b(?!.*female)/i.test(v.name),isMale=v=>MALE.test(v.name)&&!FEM.test(v.name);
+  const rankV=v=>{let s=0;if(isFem(v))s+=12;if(isMale(v))s-=14;if(GOOD.test(v.name))s+=5;if(/google/i.test(v.name))s+=2;if(v.localService)s+=1;if(/^en-in/.test(langOf(v)))s+=2;else if(/^en-(us|gb)/.test(langOf(v)))s+=1;return s};
   function pickVoice(base){const vs=voicesFor(base);if(!vs.length)return null;const want=base==='en'?prefs.vname:(prefs.vmap&&prefs.vmap[base]);if(want){const f=vs.find(v=>v.name===want);if(f)return f}return vs.slice().sort((a,b)=>rankV(b)-rankV(a))[0]}
   /* what the voice should actually say: no markdown, no emoji, and ZXVI spelled out so it is not read as gibberish */
   const tts=t=>String(t).replace(/\bZXVI\b/g,'Z X V I').replace(/\bOneAI\b/g,'One A I').replace(/https?:\/\/\S+/g,' link ').replace(/[`*_#>~|\\]/g,' ').replace(/[^\p{L}\p{M}\p{N}\s.,!?;:'’"()%+\-–—\/=×÷²³।؟。]/gu,' ').replace(/\s+/g,' ').trim();
@@ -7356,7 +7360,7 @@ const MASCOT=(()=>{
     try{synth.cancel()}catch(e){}
     const tok=++speakTok,parts=chunks(clean);let n=0,started=false;
     const next=()=>{if(tok!==speakTok)return;if(n>=parts.length){if(o.onend)o.onend();return}
-      const u=new SpeechSynthesisUtterance(parts[n++]);u.lang=v?v.lang:(base==='en'?'en-IN':base);if(v)u.voice=v;u.rate=prefs.rate||1;u.pitch=prefs.pitch||1.1;u.volume=1;
+      const u=new SpeechSynthesisUtterance(parts[n++]);u.lang=v?v.lang:(base==='en'?'en-IN':base);if(v)u.voice=v;u.rate=prefs.rate||1;u.pitch=Math.min(2,(prefs.pitch||1.1)+((v&&isMale(v)&&!prefs.vname)?0.3:0));u.volume=1;
       u.onstart=()=>{if(!started){started=true;if(o.onstart)o.onstart()}};u.onend=next;u.onerror=()=>{if(tok===speakTok&&o.onend)o.onend()};
       try{synth.speak(u)}catch(e){if(o.onend)o.onend()}};
     setTimeout(next,40);return true}
@@ -7448,7 +7452,7 @@ const MASCOT=(()=>{
   function syncFab(){buildFab();const show=prefs.fab&&curView&&curView!=='splash'&&curView!=='assistant';fabEl.hidden=!show;if(!show&&popOpen)togglePop(false)}
   function route(v){curView=v;if(v!=='assistant')stopSpeak();if(document.body)syncFab()}
 
-  return{make,mini,stage,plain,moodOf,prefs,savePrefs,route,syncFab,speak,stopSpeak,listen,relang,pickVoice,voicesFor,loadVoices,hasVoice:!!synth,hasMic:!!SR,TIPS,rnd,reduce,
+  return{make,mini,stage,plain,moodOf,prefs,savePrefs,route,syncFab,speak,stopSpeak,listen,isFem,isMale,relang,pickVoice,voicesFor,loadVoices,hasVoice:!!synth,hasMic:!!SR,TIPS,rnd,reduce,
     art:(cls)=>'<div class="'+cls+'">'+ZXART.svg({})+'</div>'}
 })();
 </script>
@@ -9588,13 +9592,14 @@ function bindLang(){
   const fill=()=>{
     const en=MASCOT.voicesFor('en'),vs=$('#vsel');if(!vs)return;
     const o=(v,t,sel)=>'<option value="'+esc(v)+'"'+(sel?' selected':'')+'>'+esc(t)+'</option>';
-    vs.innerHTML=o('','Automatic (best available)',!P.vname)+en.map(v=>o(v.name,v.name+' · '+v.lang,v.name===P.vname)).join('');
+    const enS=en.slice().sort((a,b)=>(MASCOT.isFem(b)?1:0)-(MASCOT.isFem(a)?1:0)||(MASCOT.isMale(a)?1:0)-(MASCOT.isMale(b)?1:0));
+    vs.innerHTML=o('','Automatic (female voice first)',!P.vname)+enS.map(v=>o(v.name,(MASCOT.isFem(v)?'♀ ':MASCOT.isMale(v)?'♂ ':'')+v.name+' · '+v.lang,v.name===P.vname)).join('');
     const c=I18N.cur,w=$('#vlwrap');
     if(c==='en'){w.hidden=true}else{
       const lv=MASCOT.voicesFor(c),info=I18N.info();w.hidden=false;$('#vllab').textContent=info.e+' voice (for menu text only)';
       $('#vlsel').innerHTML=lv.length?o('','Automatic',!(P.vmap&&P.vmap[c]))+lv.map(v=>o(v.name,v.name+' · '+v.lang,P.vmap&&P.vmap[c]===v.name)).join(''):o('','Not installed on this device',true);
       $('#vlsel').disabled=!lv.length}
-    $('#vnote').textContent=en.length?'':'No English voice was found yet. Some browsers load voices a moment after opening. If this stays empty, install one in your device speech settings.'};
+    $('#vnote').textContent=en.length?(en.some(MASCOT.isFem)?'':'I could not find a clearly female English voice on this device, so I raise the pitch a little. For a female voice, install one in your device speech settings (for example an English India or US female voice) and pick it here.'):'No English voice was found yet. Some browsers load voices a moment after opening. If this stays empty, install one in your device speech settings.'};
   fill();[400,1500,3500].forEach(ms=>setTimeout(()=>{if($('#vsel')&&!MASCOT.voicesFor('en').length||$('#vsel')&&$('#vsel').options.length<2)fill()},ms));
   try{speechSynthesis.addEventListener('voiceschanged',fill)}catch(e){}
   $('#vsel').onchange=e=>{P.vname=e.target.value;MASCOT.savePrefs()};
