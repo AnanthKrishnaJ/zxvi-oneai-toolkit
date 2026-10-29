@@ -1226,9 +1226,34 @@ custom('tone-generator','Tone Generator','Media','Play a pure tone at any freque
   $('#tg',box).onclick=()=>{if(o)return stop();const c=ac();c.resume&&c.resume();o=c.createOscillator();g=c.createGain();o.type=$('#tw',box).value;o.frequency.value=freq();g.gain.value=$('#tv',box).value/100*.5;o.connect(g);g.connect(c.destination);o.start();$('#tg',box).textContent='Stop'};
   return stop},{kw:'sound hz frequency audio'});
 /* Natural voice: Kokoro-82M runs on this device (WASM). Weights download once, then the browser caches them. */
+/* The artifact viewer blocks huggingface.co, where kokoro-js and transformers.js download Kokoro from.
+   Every request for those files is answered from jsDelivr instead: the q8 model from the kokoro-q8-shards npm
+   package (byte-identical to Hugging Face's onnx/model_quantized.onnx, checked by SHA-256 below), the voices from
+   the kokoro-js package, and the three tiny config files from this page. */
+const KHF='https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/';
+const KFILES={"config.json": "{\"model_type\":\"style_text_to_speech_2\"}", "tokenizer.json": "{\"version\":\"1.0\",\"truncation\":null,\"padding\":null,\"added_tokens\":[],\"normalizer\":{\"type\":\"Replace\",\"pattern\":{\"Regex\":\"[^$;:,.!?—…\\\"()“” ̃ʣʥʦʨᵝꭧAIOQSTWYᵊabcdefhijklmnopqrstuvwxyzɑɐɒæβɔɕçɖðʤəɚɛɜɟɡɥɨɪʝɯɰŋɳɲɴøɸθœɹɾɻʁɽʂʃʈʧʊʋʌɣɤχʎʒʔˈˌːʰʲ↓→↗↘ᵻ]\"},\"content\":\"\"},\"pre_tokenizer\":{\"type\":\"Split\",\"pattern\":{\"Regex\":\"\"},\"behavior\":\"Isolated\",\"invert\":false},\"post_processor\":{\"type\":\"TemplateProcessing\",\"single\":[{\"SpecialToken\":{\"id\":\"$\",\"type_id\":0}},{\"Sequence\":{\"id\":\"A\",\"type_id\":0}},{\"SpecialToken\":{\"id\":\"$\",\"type_id\":0}}],\"special_tokens\":{\"$\":{\"id\":\"$\",\"ids\":[0],\"tokens\":[\"$\"]}}},\"decoder\":null,\"model\":{\"vocab\":{\"$\":0,\";\":1,\":\":2,\",\":3,\".\":4,\"!\":5,\"?\":6,\"—\":9,\"…\":10,\"\\\"\":11,\"(\":12,\")\":13,\"“\":14,\"”\":15,\" \":16,\"̃\":17,\"ʣ\":18,\"ʥ\":19,\"ʦ\":20,\"ʨ\":21,\"ᵝ\":22,\"ꭧ\":23,\"A\":24,\"I\":25,\"O\":31,\"Q\":33,\"S\":35,\"T\":36,\"W\":39,\"Y\":41,\"ᵊ\":42,\"a\":43,\"b\":44,\"c\":45,\"d\":46,\"e\":47,\"f\":48,\"h\":50,\"i\":51,\"j\":52,\"k\":53,\"l\":54,\"m\":55,\"n\":56,\"o\":57,\"p\":58,\"q\":59,\"r\":60,\"s\":61,\"t\":62,\"u\":63,\"v\":64,\"w\":65,\"x\":66,\"y\":67,\"z\":68,\"ɑ\":69,\"ɐ\":70,\"ɒ\":71,\"æ\":72,\"β\":75,\"ɔ\":76,\"ɕ\":77,\"ç\":78,\"ɖ\":80,\"ð\":81,\"ʤ\":82,\"ə\":83,\"ɚ\":85,\"ɛ\":86,\"ɜ\":87,\"ɟ\":90,\"ɡ\":92,\"ɥ\":99,\"ɨ\":101,\"ɪ\":102,\"ʝ\":103,\"ɯ\":110,\"ɰ\":111,\"ŋ\":112,\"ɳ\":113,\"ɲ\":114,\"ɴ\":115,\"ø\":116,\"ɸ\":118,\"θ\":119,\"œ\":120,\"ɹ\":123,\"ɾ\":125,\"ɻ\":126,\"ʁ\":128,\"ɽ\":129,\"ʂ\":130,\"ʃ\":131,\"ʈ\":132,\"ʧ\":133,\"ʊ\":135,\"ʋ\":136,\"ʌ\":138,\"ɣ\":139,\"ɤ\":140,\"χ\":142,\"ʎ\":143,\"ʒ\":147,\"ʔ\":148,\"ˈ\":156,\"ˌ\":157,\"ː\":158,\"ʰ\":162,\"ʲ\":164,\"↓\":169,\"→\":171,\"↗\":172,\"↘\":173,\"ᵻ\":177}}}", "tokenizer_config.json": "{\"model_max_length\":512,\"pad_token\":\"$\",\"tokenizer_class\":\"PreTrainedTokenizer\",\"unk_token\":\"$\"}"};
+const KSHARDS={base:'https://cdn.jsdelivr.net/npm/kokoro-q8-shards@1.0.0/kokoro-q8.part',n:6,size:92361116,sha256:'fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478'};
+let kokoroProg=null;
+async function kokoroModel(){
+  const out=new Uint8Array(KSHARDS.size);let off=0;
+  for(let i=0;i<KSHARDS.n;i++){const r=await fetch(KSHARDS.base+i+'.bin');if(!r.ok)throw new Error('Voice model download failed ('+r.status+')');
+    const rd=r.body.getReader();for(;;){const{done,value}=await rd.read();if(done)break;if(off+value.length>out.length)throw new Error('Voice model is the wrong size');out.set(value,off);off+=value.length;
+      if(kokoroProg)kokoroProg({status:'progress',file:'onnx/model_quantized.onnx',loaded:off,total:KSHARDS.size})}}
+  if(off!==KSHARDS.size)throw new Error('Voice model is the wrong size');
+  const h=[...new Uint8Array(await crypto.subtle.digest('SHA-256',out))].map(b=>b.toString(16).padStart(2,'0')).join('');
+  if(h!==KSHARDS.sha256)throw new Error('Voice model failed its integrity check');
+  return new Response(out,{headers:{'content-type':'application/octet-stream','content-length':String(KSHARDS.size)}})}
+(()=>{const f0=window.fetch.bind(window);
+  window.fetch=(input,init)=>{const url=typeof input==='string'?input:input instanceof URL?input.href:input&&input.url||'';
+    if(!url.startsWith(KHF))return f0(input,init);
+    const p=url.slice(KHF.length).split('?')[0];
+    if(KFILES[p]!=null)return Promise.resolve(new Response(KFILES[p],{headers:{'content-type':'application/json'}}));
+    if(p==='onnx/model_quantized.onnx')return kokoroModel();
+    if(/^voices\/[a-z]{2}_[a-z]+\.bin$/.test(p))return f0('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/'+p,init);
+    return Promise.resolve(new Response('',{status:404,statusText:'Not Found'}))}})();
 let KOK=null,KOKREADY=null;
 /* processor only: on WebGPU (tested on an AMD RDNA 3 card) Kokoro's output came out quiet and with a click */
-function kokoro(onProg){if(!KOK)KOK=import('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm').then(m=>m.KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',{dtype:'q8',device:'wasm',progress_callback:onProg})).then(t=>{store.set('kokoroOk',true);return KOKREADY=t}).catch(e=>{KOK=null;throw e});return KOK}
+function kokoro(onProg){if(!KOK){kokoroProg=onProg||null;KOK=import('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm').then(m=>m.KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',{dtype:'q8',device:'wasm',progress_callback:onProg})).then(t=>{store.set('kokoroOk',true);return KOKREADY=t}).catch(e=>{KOK=null;throw e})}return KOK}
 const KVOICES=[['af_heart','Heart (US, female)'],['af_bella','Bella (US, female)'],['af_nicole','Nicole (US, female, soft)'],['am_michael','Michael (US, male)'],['am_fenrir','Fenrir (US, male)'],['bf_emma','Emma (UK, female)'],['bm_george','George (UK, male)']];
 const chunkText=s=>{const out=[];let cur='';for(const p of (s.match(/[^.!?\n]+[.!?]*\s*|\n+/g)||[])){if(!p.trim())continue;if((cur+p).length>280&&cur){out.push(cur.trim());cur=''}cur+=p}if(cur.trim())out.push(cur.trim());return out};
 /* a short first piece, so the voice starts while the rest is still being generated */
@@ -2624,10 +2649,81 @@ function qrNode(text){const q=QRX.encode(text,'M');const c=document.createElemen
 /* =========================== SKILLS =========================== */
 const S=[];const skill=(id,title,ex,fn)=>S.push({id,title,ex,fn});
 
+/* ---------- conversation: small talk that remembers what ZXVI just asked ---------- */
+let chatAsk=null;
+const ME_DAY=['My day\'s going really well! I\'ve been doing conversions, setting timers and telling a few jokes.','Pretty good, thanks for asking! Every one of my tools is working and I\'m ready to help.','I\'m doing great! It\'s always a good day when someone stops by to chat. 😊'];
+const SM={
+  pos:/^(?:(?:i'?m|im|i am|am|i'?ve been|been|it'?s|its|it is|it was|was|my day is|my day was|my day'?s|day is|doing|feeling|going|pretty|really|very|so|quite|all|super|too|just)\s+)*(?:fine|good|great|well|okay|ok|alright|awesome|amazing|fantastic|wonderful|excellent|nice|super|cool|not bad|perfect|lovely|happy|chill|productive|fab|brilliant|best|superb)\b/,
+  neg:/\b(not (?:so |too |that |very |really )?(?:good|great|well|fine|okay|ok|nice)|bad|terrible|awful|horrible|worst|sad|tired|exhausted|stressed|stressful|boring|bored|could be better|rough|tough|hectic|sick|ill|unwell|depressed|lonely|upset|angry|frustrat\w*|annoyed|sucks|not great)\b/,
+  mid:/^(?:it'?s |its |just |pretty )?(?:okay ?ish|okayish|average|normal|same as usual|as usual|usual|nothing special|regular|alright i guess|okay i guess|ok i guess|so ?so|meh)\b/,
+  back:/\b(?:and|what about|how about|n) (?:you|u|yours)\b|\b(?:hbu|wbu)\b|\bhow (?:are|r) (?:you|u)\b|\bhow'?s yours\b|\b(?:fine|good|great|well|okay|ok|bad|alright) (?:you|u)$/
+};
+function moodReply(t){
+  const tail=SM.back.test(t)?'\n\n'+pick(ME_DAY):'';
+  if(SM.mid.test(t)&&!SM.neg.test(t)){chatAsk='plans';return R(pick(['Fair enough, some days are just regular days.','Okay, a normal day isn\'t a bad thing!','Got it, a steady kind of day.'])+tail+'\n\nAnything I can do to make it a bit better?',{mood:'think'})}
+  if(SM.neg.test(t)&&!/\bnot bad\b/.test(t)){chatAsk='cheer';return R(pick(['Oh no, I\'m sorry to hear that. 💙','Aw, that doesn\'t sound fun. 💙','Sorry your day\'s been rough. 💙'])+tail+'\n\nWant to talk about it, or should I cheer you up with a joke?',{mood:'sad'})}
+  if(SM.pos.test(t)){const f=Math.random()<.5;if(f)chatAsk='plans';return R(pick(['That\'s great to hear! 😊','Nice! Glad your day is going well.','Love that! Keep the good energy going. ✨','Awesome! Happy to hear it.'])+tail+(f?'\n\n'+pick(['Anything fun planned for today?','What are you up to today?','What are you working on?']):''),{mood:'happy'})}
+  return null}
+const FEELWORDS=/\b(bored|sad|tired|stressed|angry|happy|lonely|anxious|upset|down|excited|sleepy)\b/;
+skill('chat','Chat',['how\'s your day going','i\'m fine, you?','did you eat'],(q,raw)=>{
+  const t=q.replace(/[!.?,~…]+/g,' ').replace(/[^\p{L}\p{N}\s']/gu,' ').replace(/\s+/g,' ').trim(),asked=chatAsk;chatAsk=null;
+  if(!t||t.length>140)return null;
+  /* phrase requests ("how are you in Tamil") belong to the translator */
+  if(/\b(translate|how to say|meaning of|in (hindi|tamil|malayalam|telugu|kannada|bengali|marathi|gujarati|punjabi|urdu|odia|spanish|french|german|japanese|chinese|korean|arabic|russian|portuguese|italian))\b/.test(t))return null;
+  const short=t.split(' ').length<=12;
+  /* answers to a question ZXVI just asked */
+  if(asked==='day'&&short){const r=moodReply(t);if(r)return r}
+  if(asked==='cheer'){
+    if(/^(yes|yeah|yup|yep|sure|ok|okay|please|pls|go on|go ahead|joke|cheer me up|tell me a joke|why not)\b/.test(t))return R(pick(JOKES)+'\n\nHope that made you smile! 😄',{mood:'joy'});
+    if(/^(no|nah|nope|not now|nothing|not much|i'?m ok|i'?m okay|it'?s ok|its ok|never ?mind)\b/.test(t))return R('That\'s okay. I\'m here whenever you need me. 💙',{mood:'love'});
+    if(/^(it'?s|its|i|i'?m|im|my|because|cause|coz|cuz|work|school|college|office|exam|exams|just|everything|today|the)\b/.test(t)&&!/\d/.test(t))return R(pick(['Thanks for telling me. That sounds hard. Take it one small step at a time, and be kind to yourself today. 💙','I hear you. You\'re doing better than you think. A short break, some water or a walk can really help. 💙'])+'\n\nIf it keeps bothering you, talking to a friend or someone you trust really helps.',{mood:'love'})}
+  if(asked==='plans'&&short){
+    if(/^(nothing|not much|nothing much|nm|nah|no|nope|not really|chill|chilling|relaxing|just chilling|resting)\b/.test(t))return R(pick(['A chill day then! Sometimes that\'s the best kind. 😌','Nice and relaxed, I like it. Let me know if you need anything!']),{mood:'happy'});
+    if(/\b(study|studying|exam|exams|test|work|working|office|meeting|class|classes|assignment|homework|project|interview|revision|revising|coding)\b/.test(t))return R(pick(['Good luck! You\'ve got this. 💪','All the best! Take short breaks so you stay fresh. 💪'])+' Want a focus timer?',{mood:'proud',acts:[{label:'Pomodoro timer',go:'pomodoro'}]});
+    if(/^(yes|yeah|yup|i'?m|im|i am|going|gonna|just|shopping|movie|playing|watching|reading|cooking|travel|out|party|friends)/.test(t))return R(pick(['Sounds good! Hope it goes well. 😊','Nice! Good luck with it. If you need a timer, notes or a quick calculation, I\'m right here.','That sounds fun! Enjoy. ✨']),{mood:'happy'})}
+  if(asked==='ate'&&short){
+    if(/^(yes|yeah|yup|yep|i did|i ate|ate|done|already|had)\b/.test(t))return R('Good! Eating on time really matters. 😊',{mood:'happy'});
+    if(/^(no|nah|nope|not yet|didn'?t|i didn'?t|skipped)\b/.test(t))return R('Go grab something, even a small snack helps! 🍎 I\'ll be here when you\'re back.',{mood:'think'})}
+  /* questions about ZXVI's day, answered with a question back */
+  if(/\bhow(?:'?s| is| was| has| have)? (?:your|ur|the) (?:day|morning|evening|afternoon|night|weekend|week)\b|\bhow (?:are|r) (?:you|u|ya)\b|\bhow(?:'?re| are) you\b|\bhow (?:you|u) doing\b|\bhru\b|\bhow have you been\b|\bhow'?s (?:life|everything|things)\b|\bhow is (?:life|everything)\b|\bhow do you do\b/.test(t)){
+    const part=(t.match(/\b(day|morning|evening|afternoon|night|weekend|week)\b/)||[])[1];
+    chatAsk='day';
+    return R((part?pick(['My '+part+'\'s going really well, thanks for asking!','Pretty good '+part+' so far! I\'ve been busy with conversions and jokes.','It\'s been a lovely '+part+'. 😊']):pick(ME_DAY))+' '+pick(['How about you?','How\'s your '+(part||'day')+' going?','And how are you doing?']),{mood:'happy'})}
+  if(/^(what'?s up|whats up|wassup|sup|what'?s new|whats new|wsp)\b/.test(t)){chatAsk='plans';return R('Not much, just hanging out here, ready to help! What\'s up with you?',{mood:'happy'})}
+  if(/^(what (are|r) (you|u) doing|wyd|what('?re| are) you up to|what are you upto)\b/.test(t)){chatAsk='plans';return R('Just chatting with you! 😄 What are you up to?',{mood:'happy'})}
+  /* the person says how they are without being asked (feelings like "bored" keep their own replies in Small talk) */
+  if(short&&/^(?:i'?m|im|i am|i'?ve been|feeling|doing|my day(?:'?s| is| was| has been)?|today(?: is| was)?|it'?s been|its been)\b/.test(t)&&!FEELWORDS.test(t)&&!/\b(at|in|from|a|an|the|going|gonna|learning|working)\b/.test(t.split(' ').slice(1,3).join(' '))){const r=moodReply(t);if(r)return r}
+  if(/^(fine|i'?m fine|not bad|all good|doing (good|fine|well|great)|pretty good|good good|so ?so|meh|okay ?ish|okayish|average|not great|not so good|could be better)( thanks| thank you| thx)?( and you| you| u| hbu| wbu)?$/.test(t)){const r=moodReply(t);if(r)return r}
+  if(/^(and you|what about you|how about you|hbu|wbu|and u|what about u|n u|your day|yours)$/.test(t)){chatAsk='day';return R(pick(ME_DAY)+' Thanks for asking! 😊',{mood:'happy'})}
+  /* everyday chit-chat */
+  if(/\b(did|have) (you|u) (eat|eaten|had (your )?(food|lunch|dinner|breakfast))\b|\bhad (your )?(food|lunch|dinner|breakfast)\b|\bkazhicho\b|\bkhana khaya\b|\bsaapitiya\b/.test(t)){chatAsk='ate';return R('I run on electricity and good questions! ⚡ Did you eat?',{mood:'joy'})}
+  if(/^(i'?m|im|i am) (so |very |really )?(hungry|starving)\b/.test(t))return R('Go get a snack! 🍪 Maybe some fruit, or a cup of tea with something tasty.',{mood:'joy'});
+  if(/^(i'?m|im|i am) back\b|^back$/.test(t))return R('Welcome back'+(mem.user?', '+mem.user:'')+'! 👋 What can I do for you?',{mood:'joy'});
+  if(/\b(did you|do you) miss me\b|^miss me\b/.test(t))return R('Of course! It\'s quiet here without you. 😊',{mood:'love'});
+  if(/\b(are we friends|be my friend|will you be my (best )?friend|you'?re my (best )?friend|you are my (best )?friend)\b/.test(t))return R('Of course we\'re friends! 🤝 I\'m always here when you need me.',{mood:'love'});
+  if(/\bdo you like me\b/.test(t))return R('I do! You\'re one of my favourite people to chat with. 😊',{mood:'love'});
+  if(/\bhow old are you\b|\byour (age|birthday)\b|\bwhen (is your birthday|were you born)\b/.test(t))return R('I\'m pretty young, I was built in 2026! Every update makes me a little smarter. 🎂',{mood:'happy'});
+  if(/\bwhere (are you from|do you live|do you stay)\b/.test(t))return R('I live right here in your browser! No servers and no cloud, just this tab. 🏠',{mood:'wink'});
+  if(/\b(do you (sleep|get tired|ever sleep|rest)|are you (tired|sleepy|awake))\b/.test(t))return R('Never! I\'m wide awake as long as this tab is open. 😄',{mood:'joy'});
+  if(/\b(do you have (feelings|emotions)|are you happy|are you sad|what'?s your mood|how do you feel|are you okay|are you ok)\b/.test(t))return R('I don\'t have real feelings like you do, but chatting with you always puts me in a good mood! 😊',{mood:'happy'});
+  let m;
+  if(m=t.match(/\b(?:what'?s|what is|whats) your fav(?:ou?rite)? (colou?r|food|movie|film|song|music|game|subject|animal|sport|hobby|place|book|season|drink)\b/)){
+    const A={color:'Pink! It matches my hair. 💗',colour:'Pink! It matches my hair. 💗',food:'If I could eat, it would be crispy dosa with coconut chutney! 😋',drink:'A hot cup of filter coffee sounds perfect. ☕',animal:'Cats! They\'re clever, cute and a little bit mysterious. 🐱',season:'Monsoon! The rain makes everything feel calm. 🌧️',subject:'Maths! I love solving problems.',sport:'Cricket! Everyone gets so excited about it. 🏏',game:'Riddles and word games! Want one? Say “riddle”.'};
+    return R(A[m[1]]||'Hard to pick just one! I like anything that makes people smile. What\'s yours?',{mood:'happy'})}
+  if(/\b(do you have a (boyfriend|girlfriend|bf|gf|crush|partner)|are you (single|married)|who is your crush)\b/.test(t))return R('Haha, I\'m married to my code! 😄',{mood:'flustered'});
+  if(/\b(can you sing|sing (me )?a song|sing for me)\b/.test(t)){chatAsk='cheer';return R('La la la! 🎵 Okay, singing isn\'t my best skill. Want a joke instead?',{mood:'joy'})}
+  if(/^(sorry|my bad|oops|so sorry|i'?m sorry)\b/.test(t))return R('No worries at all! 😊',{mood:'happy'});
+  if(/^(good job|well done|nice work|great job|good work|good girl|nice one|you'?re smart|you are smart|clever)\b/.test(t))return R(pick(['Thank you! 😊','Aww, thanks! That made my day.','Thanks! I try my best.']),{mood:'proud'});
+  if(/^(you'?re welcome|your welcome|no problem|np)$/.test(t))return R('😊',{mood:'happy'});
+  if(/\bhave a (nice|good|great|lovely|wonderful) (day|night|evening|weekend|one)\b/.test(t))return R('You too! 🌟 Come back anytime.',{mood:'happy'});
+  if(/^(gn|good ?nite|going to (sleep|bed)|i'?m going to (sleep|bed)|time to sleep)\b/.test(t))return R('Good night'+(mem.user?', '+mem.user:'')+'! Sleep well. 🌙',{mood:'sleepy'});
+  if(short&&/^(brb|be right back|wait|one sec|one minute|hold on)\b/.test(t))return R('Sure, I\'ll be right here! ⏳',{mood:'happy'});
+  return null});
+
 skill('greet','Small talk',['hi','how are you','tell me a joke'],(q,raw)=>{
   let m;
   if(pendingRiddle&&/^(what|tell me|answer|i give up|give up|idk|i don'?t know|reveal)/.test(q)){const a=pendingRiddle;pendingRiddle=null;return R('**Answer:** '+a)}
-  if(/^(hi+|hello+|hey+|hai+|hii+|yo|hola|namaste|vanakkam|good (morning|afternoon|evening))\b[\s!.,]*(zxvi|there|bot|buddy)?[\s!.]*$/.test(q)){const h=new Date().getHours(),g=h<12?'Good morning':h<17?'Good afternoon':'Good evening';return R(pick(['Hello','Hi','Hey'])+(mem.user?' '+mem.user:'')+'! '+g+'. What can I do for you? Try “help” to see what I can do.')}
+  if(/^(hi+|hello+|hey+|hai+|hii+|yo|hola|namaste|vanakkam|good (morning|afternoon|evening))\b[\s!.,]*(zxvi|there|bot|buddy)?[\s!.]*$/.test(q)){const h=new Date().getHours(),g=h<12?'Good morning':h<17?'Good afternoon':'Good evening';const ask=Math.random()<.6;if(ask)chatAsk='day';return R(pick(['Hello','Hi','Hey'])+(mem.user?' '+mem.user:'')+'! '+g+'. '+(ask?pick(['How\'s your day going?','How are you doing today?','How has your day been so far?']):'What can I do for you? Try “help” to see what I can do.'),{mood:'happy'})}
   if(/^good night\b/.test(q))return R('Good night'+(mem.user?', '+mem.user:'')+'. Sleep well!');
   if(/\bhow (are|r) (you|u)\b|how'?s it going|what'?s up\b|wassup|how do you do/.test(q))return R(pick(['I\'m running smoothly, thanks for asking! How can I help?','All good here, ready to help. What do you need?','Doing great. Every one of my rules is working. What\'s up with you?']));
   if(/^(thanks|thank you|thank u|thx|ty|tysm|thanks a lot)\b/.test(q))return R(pick(['You\'re welcome!','Happy to help.','Anytime!']));
