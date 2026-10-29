@@ -1227,34 +1227,51 @@ custom('tone-generator','Tone Generator','Media','Play a pure tone at any freque
   return stop},{kw:'sound hz frequency audio'});
 /* Natural voice: Kokoro-82M runs on this device (WASM). Weights download once, then the browser caches them. */
 /* The artifact viewer blocks huggingface.co, where kokoro-js and transformers.js download Kokoro from.
-   Every request for those files is answered from jsDelivr instead: the q8 model from the kokoro-q8-shards npm
-   package (byte-identical to Hugging Face's onnx/model_quantized.onnx, checked by SHA-256 below), the voices from
-   the kokoro-js package, and the three tiny config files from this page. */
+   Every request for those files is answered from elsewhere: the q8 model (byte-identical to Hugging Face's
+   onnx/model_quantized.onnx), the voices, and the three tiny config files from this page. */
 const KHF='https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/';
 const KFILES={"config.json": "{\"model_type\":\"style_text_to_speech_2\"}", "tokenizer.json": "{\"version\":\"1.0\",\"truncation\":null,\"padding\":null,\"added_tokens\":[],\"normalizer\":{\"type\":\"Replace\",\"pattern\":{\"Regex\":\"[^$;:,.!?—…\\\"()“” ̃ʣʥʦʨᵝꭧAIOQSTWYᵊabcdefhijklmnopqrstuvwxyzɑɐɒæβɔɕçɖðʤəɚɛɜɟɡɥɨɪʝɯɰŋɳɲɴøɸθœɹɾɻʁɽʂʃʈʧʊʋʌɣɤχʎʒʔˈˌːʰʲ↓→↗↘ᵻ]\"},\"content\":\"\"},\"pre_tokenizer\":{\"type\":\"Split\",\"pattern\":{\"Regex\":\"\"},\"behavior\":\"Isolated\",\"invert\":false},\"post_processor\":{\"type\":\"TemplateProcessing\",\"single\":[{\"SpecialToken\":{\"id\":\"$\",\"type_id\":0}},{\"Sequence\":{\"id\":\"A\",\"type_id\":0}},{\"SpecialToken\":{\"id\":\"$\",\"type_id\":0}}],\"special_tokens\":{\"$\":{\"id\":\"$\",\"ids\":[0],\"tokens\":[\"$\"]}}},\"decoder\":null,\"model\":{\"vocab\":{\"$\":0,\";\":1,\":\":2,\",\":3,\".\":4,\"!\":5,\"?\":6,\"—\":9,\"…\":10,\"\\\"\":11,\"(\":12,\")\":13,\"“\":14,\"”\":15,\" \":16,\"̃\":17,\"ʣ\":18,\"ʥ\":19,\"ʦ\":20,\"ʨ\":21,\"ᵝ\":22,\"ꭧ\":23,\"A\":24,\"I\":25,\"O\":31,\"Q\":33,\"S\":35,\"T\":36,\"W\":39,\"Y\":41,\"ᵊ\":42,\"a\":43,\"b\":44,\"c\":45,\"d\":46,\"e\":47,\"f\":48,\"h\":50,\"i\":51,\"j\":52,\"k\":53,\"l\":54,\"m\":55,\"n\":56,\"o\":57,\"p\":58,\"q\":59,\"r\":60,\"s\":61,\"t\":62,\"u\":63,\"v\":64,\"w\":65,\"x\":66,\"y\":67,\"z\":68,\"ɑ\":69,\"ɐ\":70,\"ɒ\":71,\"æ\":72,\"β\":75,\"ɔ\":76,\"ɕ\":77,\"ç\":78,\"ɖ\":80,\"ð\":81,\"ʤ\":82,\"ə\":83,\"ɚ\":85,\"ɛ\":86,\"ɜ\":87,\"ɟ\":90,\"ɡ\":92,\"ɥ\":99,\"ɨ\":101,\"ɪ\":102,\"ʝ\":103,\"ɯ\":110,\"ɰ\":111,\"ŋ\":112,\"ɳ\":113,\"ɲ\":114,\"ɴ\":115,\"ø\":116,\"ɸ\":118,\"θ\":119,\"œ\":120,\"ɹ\":123,\"ɾ\":125,\"ɻ\":126,\"ʁ\":128,\"ɽ\":129,\"ʂ\":130,\"ʃ\":131,\"ʈ\":132,\"ʧ\":133,\"ʊ\":135,\"ʋ\":136,\"ʌ\":138,\"ɣ\":139,\"ɤ\":140,\"χ\":142,\"ʎ\":143,\"ʒ\":147,\"ʔ\":148,\"ˈ\":156,\"ˌ\":157,\"ː\":158,\"ʰ\":162,\"ʲ\":164,\"↓\":169,\"→\":171,\"↗\":172,\"↘\":173,\"ᵻ\":177}}}", "tokenizer_config.json": "{\"model_max_length\":512,\"pad_token\":\"$\",\"tokenizer_class\":\"PreTrainedTokenizer\",\"unk_token\":\"$\"}"};
-const KSHARDS={base:'https://cdn.jsdelivr.net/npm/kokoro-q8-shards@1.0.0/kokoro-q8.part',n:6,size:92361116,sha256:'fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478'};
+/* jsDelivr first. The claude.ai artifact viewer blocks every download from another site (only scripts may load from
+   jsDelivr), so there the same bytes come from this artifact's own asset store: base64 text chunks, decoded here.
+   Either way the model and the ONNX Runtime engine are checked by SHA-256 before use. */
+const kf0=window.fetch.bind(window);
+const KSRC={
+  model:{size:92361116,sha256:'fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478',
+    cdn:[0,1,2,3,4,5].map(i=>'https://cdn.jsdelivr.net/npm/kokoro-q8-shards@1.0.0/kokoro-q8.part'+i+'.bin'),
+    blobs:['e2637143b785e0a501faf12add5fa1f8','74ac239ec516d7749c5409cf14a9a957','2b5b0a4dada73d4736abfed3098c992c','b0427c49d289f27767a5df8a014f9dd0','3c6170c220db96ce471bae0e26f7f4d5','f52a101125483872b99ae97ca0c88be0','2e861a0e81933935cf2df29b72b3cd67','f0672a26705dabeeb735000650cb7ddb','57ffb0288ded8cfb8c8d9009ca45f13b']},
+  wasm:{size:21596019,sha256:'c46655e8a94afc45338d4cb2b840475f88e5012d524509916e505079c00bfa39',
+    cdn:['https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1/dist/ort-wasm-simd-threaded.jsep.wasm'],
+    blobs:['15428e438d52a481c5e1658ade89596c','e6bcbf1e0cae6ff31df0fe467d9f0ffb']}};
+const KVOICEBLOB='5800fbc38744cdf8e9373203ba9fde3a';
 let kokoroProg=null;
-async function kokoroModel(){
-  const out=new Uint8Array(KSHARDS.size);let off=0;
-  for(let i=0;i<KSHARDS.n;i++){const r=await fetch(KSHARDS.base+i+'.bin');if(!r.ok)throw new Error('Voice model download failed ('+r.status+')');
-    const rd=r.body.getReader();for(;;){const{done,value}=await rd.read();if(done)break;if(off+value.length>out.length)throw new Error('Voice model is the wrong size');out.set(value,off);off+=value.length;
-      if(kokoroProg)kokoroProg({status:'progress',file:'onnx/model_quantized.onnx',loaded:off,total:KSHARDS.size})}}
-  if(off!==KSHARDS.size)throw new Error('Voice model is the wrong size');
+const b64bytes=s=>{if(Uint8Array.fromBase64)return Uint8Array.fromBase64(s);const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u};
+async function kokoroBytes(src,file){
+  const out=new Uint8Array(src.size);let off=0;
+  const put=u=>{if(off+u.length>out.length)throw new Error('Voice file is the wrong size');out.set(u,off);off+=u.length;if(kokoroProg)kokoroProg({status:'progress',file,loaded:off,total:src.size})};
+  try{for(const u of src.cdn){const r=await kf0(u);if(!r.ok)throw new Error(String(r.status));const rd=r.body.getReader();for(;;){const{done,value}=await rd.read();if(done)break;put(value)}}}
+  catch(e){off=0;for(const id of src.blobs){const r=await kf0('/_blob/'+id);if(!r.ok)throw new Error('Voice file download failed ('+r.status+')');put(b64bytes(await r.text()))}}
+  if(off!==src.size)throw new Error('Voice file is the wrong size');
   const h=[...new Uint8Array(await crypto.subtle.digest('SHA-256',out))].map(b=>b.toString(16).padStart(2,'0')).join('');
-  if(h!==KSHARDS.sha256)throw new Error('Voice model failed its integrity check');
-  return new Response(out,{headers:{'content-type':'application/octet-stream','content-length':String(KSHARDS.size)}})}
-(()=>{const f0=window.fetch.bind(window);
-  window.fetch=(input,init)=>{const url=typeof input==='string'?input:input instanceof URL?input.href:input&&input.url||'';
-    if(!url.startsWith(KHF))return f0(input,init);
-    const p=url.slice(KHF.length).split('?')[0];
-    if(KFILES[p]!=null)return Promise.resolve(new Response(KFILES[p],{headers:{'content-type':'application/json'}}));
-    if(p==='onnx/model_quantized.onnx')return kokoroModel();
-    if(/^voices\/[a-z]{2}_[a-z]+\.bin$/.test(p))return f0('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/'+p,init);
-    return Promise.resolve(new Response('',{status:404,statusText:'Not Found'}))}})();
+  if(h!==src.sha256)throw new Error('Voice file failed its integrity check');
+  return out}
+let kVoices=null;
+async function kokoroVoice(p,init){
+  try{const r=await kf0('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/'+p,init);if(r.ok)return r}catch(e){}
+  if(!kVoices)kVoices=kf0('/_blob/'+KVOICEBLOB).then(r=>{if(!r.ok)throw new Error('Voice download failed ('+r.status+')');return r.json()}).catch(e=>{kVoices=null;throw e});
+  const b=(await kVoices)[p.slice(7,-4)];
+  return b?new Response(b64bytes(b),{headers:{'content-type':'application/octet-stream'}}):new Response('',{status:404,statusText:'Not Found'})}
+window.fetch=(input,init)=>{const url=typeof input==='string'?input:input instanceof URL?input.href:input&&input.url||'';
+  if(/\/ort-wasm-simd-threaded\.jsep\.wasm(\?|$)/.test(url))return kokoroBytes(KSRC.wasm,'engine').then(u=>new Response(u,{headers:{'content-type':'application/wasm'}}));
+  if(!url.startsWith(KHF))return /^https?:/.test(url)&&!url.startsWith(location.origin)?kf0(input,init).catch(e=>{throw new Error((e&&e.message||'Failed to fetch')+' '+url.replace(/^https?:\/\//,'').slice(0,90))}):kf0(input,init);
+  const p=url.slice(KHF.length).split('?')[0];
+  if(KFILES[p]!=null)return Promise.resolve(new Response(KFILES[p],{headers:{'content-type':'application/json'}}));
+  if(p==='onnx/model_quantized.onnx')return kokoroBytes(KSRC.model,p).then(u=>new Response(u,{headers:{'content-type':'application/octet-stream','content-length':String(u.length)}}));
+  if(/^voices\/[a-z]{2}_[a-z]+\.bin$/.test(p))return kokoroVoice(p,init);
+  return Promise.resolve(new Response('',{status:404,statusText:'Not Found'}))};
 let KOK=null,KOKREADY=null;
 /* processor only: on WebGPU (tested on an AMD RDNA 3 card) Kokoro's output came out quiet and with a click */
 function kokoro(onProg){if(!KOK){kokoroProg=onProg||null;KOK=import('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm').then(m=>m.KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',{dtype:'q8',device:'wasm',progress_callback:onProg})).then(t=>{store.set('kokoroOk',true);return KOKREADY=t}).catch(e=>{KOK=null;throw e})}return KOK}
-const KVOICES=[['af_heart','Heart (US, female)'],['af_bella','Bella (US, female)'],['af_nicole','Nicole (US, female, soft)'],['am_michael','Michael (US, male)'],['am_fenrir','Fenrir (US, male)'],['bf_emma','Emma (UK, female)'],['bm_george','George (UK, male)']];
+const KVOICES=[['af_heart','Heart (US, female)'],['af_bella','Bella (US, female)'],['af_nicole','Nicole (US, female, soft)'],['af_sarah','Sarah (US, female)'],['af_sky','Sky (US, female)'],['bf_emma','Emma (UK, female)'],['bf_isabella','Isabella (UK, female)']];
 const chunkText=s=>{const out=[];let cur='';for(const p of (s.match(/[^.!?\n]+[.!?]*\s*|\n+/g)||[])){if(!p.trim())continue;if((cur+p).length>280&&cur){out.push(cur.trim());cur=''}cur+=p}if(cur.trim())out.push(cur.trim());return out};
 /* a short first piece, so the voice starts while the rest is still being generated */
 const quickStart=parts=>{const p=parts[0]||'';if(p.length<=60)return parts;const m=p.slice(15).search(/[,;:.!?]\s/);let cut=m>=0&&m+16<=70?m+16:p.lastIndexOf(' ',55);if(cut<15)cut=55;return [p.slice(0,cut).trim(),p.slice(cut).trim(),...parts.slice(1)].filter(Boolean)};
@@ -1266,7 +1283,8 @@ custom('text-to-speech','Text to Speech','Media','Hear any text read aloud with 
   box.innerHTML='<div class="panel"><div class="seg" id="teng" style="margin-bottom:14px"><button aria-pressed="true" data-e="ai">Natural AI voice</button><button aria-pressed="false" data-e="dev">Device voices</button></div><div class="fields"><label class="f full"><span>Text</span><textarea id="tt" rows="4">Hello! This is ZXVI, the One AI Toolkit, reading text aloud.</textarea></label><label class="f"><span>Voice</span><select id="tv"></select></label><label class="f"><span>Speed: <b id="trv">1</b>×</span><input id="tr" type="range" min="0.5" max="2" step="0.1" value="1"></label><label class="f" id="tpw" hidden><span>Pitch: <b id="tpv">1</b></span><input id="tp" type="range" min="0.5" max="2" step="0.1" value="1"></label></div><div class="row" style="margin-top:12px"><button class="btn pri" id="tgo">Speak</button><button class="btn" id="tps">Pause</button><button class="btn" id="tx">Stop</button><button class="btn" id="tdl" hidden>Save WAV</button></div><p class="muted" id="tmsg"></p><p class="muted" id="tnote" style="font-size:12px;margin:0">The AI voice runs entirely on your device. The first use downloads the model (about 90 MB) once; after that it works offline. English only.</p></div>';
   const q=s=>$(s,box),msg=t=>q('#tmsg').textContent=t;
   let eng='ai',run=0,audio=null,lastWav=null;
-  const fillDev=()=>{if(eng!=='dev')return;const v=hasDev?speechSynthesis.getVoices():[];q('#tv').innerHTML=v.length?v.map((x,i)=>'<option value="'+i+'">'+esc(x.name+' ('+x.lang+')')+'</option>').join(''):'<option>Default voice</option>'};
+  /* male device voices are left out; the index still points into getVoices() */
+  const fillDev=()=>{if(eng!=='dev')return;const v=(hasDev?speechSynthesis.getVoices():[]).map((x,i)=>[x,i]).filter(([x])=>!(window.MASCOT&&MASCOT.isMale(x)));q('#tv').innerHTML=v.length?v.map(([x,i])=>'<option value="'+i+'">'+esc(x.name+' ('+x.lang+')')+'</option>').join(''):'<option>Default voice</option>'};
   const fillAi=()=>{q('#tv').innerHTML=KVOICES.map(([k,n])=>'<option value="'+k+'">'+esc(n)+'</option>').join('')};
   const stop=()=>{run++;if(hasDev)speechSynthesis.cancel();if(audio){audio.pause();audio=null}q('#tps').textContent='Pause';msg('')};
   const setEng=e=>{stop();eng=e;box.querySelectorAll('#teng button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.e===e));q('#tpw').hidden=e==='ai';q('#tnote').hidden=e!=='ai';q('#tdl').hidden=e!=='ai'||!lastWav;e==='ai'?fillAi():fillDev()};
@@ -7483,7 +7501,7 @@ const MASCOT=(()=>{
   const MALE=/\bmale\b(?!.*female)|david|mark\b|james|ravi|hemant|rishi|george|daniel|alex\b|fred\b|guy\b|brian|christopher|eric\b|roger|ryan|thomas|prabhat|arthur|oliver|matthew|joey|justin|kevin|russell|geraint|liam|william|sean\b|aaron|lee\b/i;
   const isFem=v=>FEM.test(v.name)&&!/\bmale\b(?!.*female)/i.test(v.name),isMale=v=>MALE.test(v.name)&&!FEM.test(v.name);
   const rankV=v=>{let s=0;if(isFem(v))s+=12;if(isMale(v))s-=14;if(GOOD.test(v.name))s+=5;if(/google/i.test(v.name))s+=2;if(v.localService)s+=1;if(/^en-in/.test(langOf(v)))s+=2;else if(/^en-(us|gb)/.test(langOf(v)))s+=1;return s};
-  function pickVoice(base){const vs=voicesFor(base);if(!vs.length)return null;const want=base==='en'?prefs.vname:(prefs.vmap&&prefs.vmap[base]);if(want){const f=vs.find(v=>v.name===want);if(f)return f}return vs.slice().sort((a,b)=>rankV(b)-rankV(a))[0]}
+  function pickVoice(base){const all=voicesFor(base),fem=all.filter(v=>!isMale(v)),vs=fem.length?fem:all;if(!vs.length)return null;const want=base==='en'?prefs.vname:(prefs.vmap&&prefs.vmap[base]);if(want){const f=vs.find(v=>v.name===want);if(f)return f}return vs.slice().sort((a,b)=>rankV(b)-rankV(a))[0]}
   /* what the voice should actually say: no markdown, no emoji, and ZXVI said "swevy" */
   const tts=t=>sayFix(t).replace(/\bOneAI\b/g,'One A I').replace(/https?:\/\/\S+/g,' link ').replace(/[`*_#>~|\\]/g,' ').replace(/[^\p{L}\p{M}\p{N}\s.,!?;:'’"()%+\-–—\/=×÷²³।؟。]/gu,' ').replace(/\s+/g,' ').trim();
   const chunks=t=>{const s=t.match(/[^.!?।؟。]+[.!?।؟。]*\s*/g)||[t];const out=[];let c='';for(const x of s){if((c+x).length>190&&c){out.push(c.trim());c=x}else c+=x}if(c.trim())out.push(c.trim());return out.length?out:[t]};
@@ -9743,8 +9761,8 @@ function bindLang(){
   const fill=()=>{
     const en=MASCOT.voicesFor('en'),vs=$('#vsel');if(!vs)return;
     const o=(v,t,sel)=>'<option value="'+esc(v)+'"'+(sel?' selected':'')+'>'+esc(t)+'</option>';
-    const enS=en.slice().sort((a,b)=>(MASCOT.isFem(b)?1:0)-(MASCOT.isFem(a)?1:0)||(MASCOT.isMale(a)?1:0)-(MASCOT.isMale(b)?1:0));
-    vs.innerHTML=o('','Automatic (female voice first)',!P.vname)+enS.map(v=>o(v.name,(MASCOT.isFem(v)?'♀ ':MASCOT.isMale(v)?'♂ ':'')+v.name+' · '+v.lang,v.name===P.vname)).join('');
+    const enS=en.filter(v=>!MASCOT.isMale(v)).sort((a,b)=>(MASCOT.isFem(b)?1:0)-(MASCOT.isFem(a)?1:0));
+    vs.innerHTML=o('','Automatic (female voice)',!P.vname)+enS.map(v=>o(v.name,(MASCOT.isFem(v)?'♀ ':'')+v.name+' · '+v.lang,v.name===P.vname)).join('');
     const c=I18N.cur,w=$('#vlwrap');
     if(c==='en'){w.hidden=true}else{
       const lv=MASCOT.voicesFor(c),info=I18N.info();w.hidden=false;$('#vllab').textContent=info.e+' voice (for menu text only)';
