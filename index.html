@@ -7559,7 +7559,31 @@ const MASCOT=(()=>{
   function warmNatural(){if(warming||KOKREADY)return;warming=true;const files={};let last=-1;toast('Loading the natural voice…',4000);
     let p;try{p=kokoro(e=>{if(e.status!=='progress'||!e.total)return;files[e.file]=[e.loaded,e.total];let a=0,b=0;for(const k in files){a+=files[k][0];b+=files[k][1]}const pc=Math.round(a/b*100);if(pc!==last){last=pc;toast('Natural voice: '+pc+'% of '+Math.round(b/1048576)+' MB',4000)}})}catch(e){p=Promise.reject(e)}
     p.then(()=>toast('Natural voice ready. The next reply uses it.',5000)).catch(e=>{warming=false;toast('Natural voice failed: '+(e&&e.message||e),10000)})}
+  /* ZXVI's own C42 voice, from the ZXVI Voice server (github.com/AnanthKrishnaJ/zxvi-voice) when it runs on this computer.
+     The claude.ai artifact can't reach localhost and the server refuses file:// pages, so there it is never tried. */
+  const C42='http://127.0.0.1:7860',C42LANGS=new Set(['en','hi','ml','ta','te','kn','bn','mr','gu','or','as','ne','ur','pa','sa']);
+  const c42Possible=location.protocol!=='file:'&&!/claudeusercontent\.com$/.test(location.hostname);
+  let c42At=0,c42Ok=false,c42Told=false;
+  async function c42Ready(){if(Date.now()-c42At<15000)return c42Ok;c42At=Date.now();
+    try{const ac=new AbortController(),t=setTimeout(()=>ac.abort(),1500);const r=await fetch(C42+'/api/status',{signal:ac.signal});clearTimeout(t);const j=await r.json();c42Ok=r.ok&&(j.status==='ready'||j.status==='busy')}catch(e){c42Ok=false}
+    return c42Ok}
+  async function c42Clip(text,lang){const r=await fetch(C42+'/api/synthesize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,language:lang})});
+    const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'server error '+r.status);return C42+j.url}
+  async function speakC42(clean,lang,o,tok){const parts=quickStart(chunks(clean));let started=false,nx=c42Clip(parts[0],lang);
+    for(let i=0;i<parts.length;i++){let url;try{url=await nx}catch(e){c42At=0;fallbackLocal(e,parts.slice(i).join(' '),lang,o,tok);return}if(tok!==speakTok)return;
+      if(i+1<parts.length){nx=c42Clip(parts[i+1],lang);nx.catch(()=>{})}
+      aiAudio=new Audio(url);if(!started){started=true;if(!c42Told){c42Told=true;toast('Speaking with your C42 voice',3000)}if(o.onstart)o.onstart()}
+      const ok=await new Promise(r=>{aiAudio.onended=()=>r(true);aiAudio.onerror=()=>r(false);aiAudio.play().catch(()=>r(false))});if(tok!==speakTok)return;
+      if(!ok){fallbackLocal(new Error('the audio would not play'),parts.slice(i).join(' '),lang,o,tok);return}}
+    aiAudio=null;if(tok===speakTok&&o.onend)o.onend()}
+  function fallbackLocal(e,rest,lang,o,tok){if(tok!==speakTok)return;toast('C42 voice problem ('+(e&&e.message||e)+'). Using the built-in voice.',6000);if(!speakLocal(rest,{...o,lang})&&o.onend)o.onend()}
   function speak(text,o){o=o||{};if(!prefs.voice&&!o.force)return false;
+    const base=String(o.lang||'en').split('-')[0];
+    if(!c42Possible||!C42LANGS.has(base))return speakLocal(text,o);
+    const clean=tts(text);if(!clean)return false;
+    stopSpeak();const tok=++speakTok;
+    c42Ready().then(ok=>{if(tok!==speakTok)return;if(ok)speakC42(clean,base,o,tok);else if(!speakLocal(text,o)&&o.onend)o.onend()});return true}
+  function speakLocal(text,o){o=o||{};if(!prefs.voice&&!o.force)return false;
     const base=String(o.lang||'en').split('-')[0],clean=tts(text);if(!clean)return false;
     if(base==='en'){if(KOKREADY){stopSpeak();speakNatural(KOKREADY,chunks(clean),o,++speakTok);return true}
       /* downloaded before: it is only loading from the browser cache, so wait for it (not forever) rather than fall back to the robotic voice */
