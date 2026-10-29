@@ -1280,18 +1280,23 @@ function kokoroWorkerMain(origin){
       else if(m.type==='gen'){const a=await tts.generate(m.text,{voice:m.voice,speed:m.speed});const audio=a.audio;self.postMessage({id:m.id,ok:true,audio,rate:a.sampling_rate},[audio.buffer])}}
     catch(err){self.postMessage({id:m.id,ok:false,error:String(err&&err.message||err)})}}}
 /* the page's side: same generate() shape as KokoroTTS, so callers don't care where it runs */
-function kokoroInWorker(onProg){return new Promise((resolve,reject)=>{
+function kokoroInWorker(onProg,onDead){return new Promise((resolve,reject)=>{
   const src='const KHF='+JSON.stringify(KHF)+',KFILES='+JSON.stringify(KFILES)+',KSRC='+JSON.stringify(KSRC)+',KVOICEBLOB='+JSON.stringify(KVOICEBLOB)+';\n'+kokoroEnv+'\n'+kokoroWorkerMain+'\nkokoroWorkerMain('+JSON.stringify(location.origin)+');';
   let w;try{w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})),{type:'module'})}catch(e){return reject(e)}
-  let n=0;const wait=new Map();
-  const call=msg=>new Promise((res,rej)=>{const id=++n;wait.set(id,{res,rej});w.postMessage({...msg,id})});
-  w.onerror=e=>{if(e.preventDefault)e.preventDefault();const err=new Error('The voice worker could not start'+(e.message?' ('+e.message+')':''));for(const p of wait.values())p.rej(err);wait.clear();w.terminate();reject(err)};
+  /* a worker that crashes or stops answering must not leave callers waiting forever: fail them and let kokoro() start over */
+  let n=0,dead=false,up=false;const wait=new Map();
+  const die=err=>{if(dead)return;dead=true;for(const p of wait.values())p.rej(err);wait.clear();w.terminate();reject(err);if(up&&onDead)onDead(err)};
+  const call=(msg,ms)=>new Promise((res,rej)=>{if(dead)return rej(new Error('The voice worker stopped'));const id=++n;
+    const t=ms?setTimeout(()=>{if(wait.has(id))die(new Error('The voice took too long, so it was restarted'))},ms):0;
+    wait.set(id,{res:v=>{clearTimeout(t);res(v)},rej:e=>{clearTimeout(t);rej(e)}});w.postMessage({...msg,id})});
+  w.onerror=e=>{if(e.preventDefault)e.preventDefault();die(new Error('The voice worker stopped'+(e.message?' ('+e.message+')':'')))};
+  w.onmessageerror=()=>die(new Error('The voice worker sent unreadable data'));
   w.onmessage=e=>{const m=e.data;if(m.type==='progress'){if(onProg)onProg({status:'progress',file:m.file,loaded:m.loaded,total:m.total});return}
     const p=wait.get(m.id);if(!p)return;wait.delete(m.id);if(m.ok)p.res(m);else p.rej(new Error(m.error))};
-  call({type:'load'}).then(()=>resolve({inWorker:true,generate:(text,o)=>call({type:'gen',text,voice:o.voice,speed:o.speed||1}).then(m=>({audio:m.audio,sampling_rate:m.rate}))}),e=>{w.terminate();reject(e)})})}
+  call({type:'load'}).then(()=>{up=true;resolve({inWorker:true,generate:(text,o)=>call({type:'gen',text,voice:o.voice,speed:o.speed||1},Math.max(45000,String(text).length*1500)).then(m=>({audio:m.audio,sampling_rate:m.rate}))})},e=>{w.terminate();reject(e)})})}
 let KOK=null,KOKREADY=null;
 /* a worker keeps the page responsive while the voice loads and speaks; if the viewer refuses one, it runs on the page */
-function kokoro(onProg){if(!KOK){KOK=kokoroInWorker(onProg).catch(e=>{console.warn('Kokoro worker unavailable, running on the page:',e);return kokoroEnv(window,location.origin).load(onProg)})
+function kokoro(onProg){if(!KOK){let mine;mine=KOK=kokoroInWorker(onProg,()=>{if(KOK===mine){KOK=null;KOKREADY=null}}).catch(e=>{console.warn('Kokoro worker unavailable, running on the page:',e);return kokoroEnv(window,location.origin).load(onProg)})
   .then(t=>{store.set('kokoroOk',true);return KOKREADY=t}).catch(e=>{KOK=null;throw e})}return KOK}
 const KVOICES=[['af_heart','Heart (US, female)'],['af_bella','Bella (US, female)'],['af_nicole','Nicole (US, female, soft)'],['af_sarah','Sarah (US, female)'],['af_sky','Sky (US, female)'],['bf_emma','Emma (UK, female)'],['bf_isabella','Isabella (UK, female)']];
 const chunkText=s=>{const out=[];let cur='';for(const p of (s.match(/[^.!?\n]+[.!?]*\s*|\n+/g)||[])){if(!p.trim())continue;if((cur+p).length>280&&cur){out.push(cur.trim());cur=''}cur+=p}if(cur.trim())out.push(cur.trim());return out};
@@ -7530,25 +7535,29 @@ const MASCOT=(()=>{
   let speakTok=0,aiAudio=null;
   /* English replies use the natural on-device voice (Kokoro, af_heart) once it has loaded; until then, and for other languages, the device voice speaks */
   async function speakNatural(tts,parts,o,tok){parts=quickStart(parts);let started=false;const gen=s=>tts.generate(s,{voice:'af_heart',speed:prefs.rate||1});let nx=gen(parts[0]);
-    for(let i=0;i<parts.length;i++){let a;try{a=await nx}catch(e){toast('Natural voice error: '+(e&&e.message||e),8000);break}if(tok!==speakTok)return;if(i+1<parts.length)nx=gen(parts[i+1]);
+    for(let i=0;i<parts.length;i++){let a;try{a=await nx}catch(e){aiAudio=null;fallbackDevice(e,parts.slice(i).join(' '),o,tok);return}if(tok!==speakTok)return;if(i+1<parts.length)nx=gen(parts[i+1]);
       const url=URL.createObjectURL(wavBlob(a.audio,a.sampling_rate));aiAudio=new Audio(url);if(!started){started=true;if(o.onstart)o.onstart()}
-      await new Promise(r=>{aiAudio.onended=aiAudio.onerror=r;aiAudio.play().catch(r)});URL.revokeObjectURL(url);if(tok!==speakTok)return}
+      await new Promise(r=>{aiAudio.onended=aiAudio.onerror=r;aiAudio.play().catch(e=>{if(e&&e.name==='NotAllowedError')toast('The browser blocked the sound. Click anywhere on the page once, then try again.',6000);r()})});URL.revokeObjectURL(url);if(tok!==speakTok)return}
     aiAudio=null;if(tok===speakTok&&o.onend)o.onend()}
+  /* the natural voice failed or never loaded: say it with the device voice instead of staying silent */
+  function fallbackDevice(e,clean,o,tok){if(tok!==speakTok)return;toast('Natural voice problem ('+(e&&e.message||e)+'). Using the device voice.',6000);if(!speakDevice(clean,'en',o,tok)&&o.onend)o.onend()}
+  const withTimeout=(p,ms,what)=>Promise.race([p,new Promise((_,j)=>setTimeout(()=>j(new Error(what+' took too long')),ms))]);
   /* load the natural voice in the background and say on screen how it is going, so a failure is visible */
   let warming=false;
   function warmNatural(){if(warming||KOKREADY)return;warming=true;const files={};let last=-1;toast('Loading the natural voice…',4000);
     let p;try{p=kokoro(e=>{if(e.status!=='progress'||!e.total)return;files[e.file]=[e.loaded,e.total];let a=0,b=0;for(const k in files){a+=files[k][0];b+=files[k][1]}const pc=Math.round(a/b*100);if(pc!==last){last=pc;toast('Natural voice: '+pc+'% of '+Math.round(b/1048576)+' MB',4000)}})}catch(e){p=Promise.reject(e)}
     p.then(()=>toast('Natural voice ready. The next reply uses it.',5000)).catch(e=>{warming=false;toast('Natural voice failed: '+(e&&e.message||e),10000)})}
   function speak(text,o){o=o||{};if(!prefs.voice&&!o.force)return false;
-    const base=String(o.lang||'en').split('-')[0];
-    if(base==='en'){const clean=tts(text);if(!clean)return false;if(KOKREADY){stopSpeak();speakNatural(KOKREADY,chunks(clean),o,++speakTok);return true}
-      /* downloaded before: it is only loading from the browser cache, so wait for it rather than fall back to the robotic voice */
-      if(store.get('kokoroOk',false)){stopSpeak();const tok=++speakTok;warmNatural();kokoro().then(t=>{if(tok===speakTok)speakNatural(t,chunks(clean),o,tok)}).catch(()=>{if(tok===speakTok&&o.onend)o.onend()});return true}
+    const base=String(o.lang||'en').split('-')[0],clean=tts(text);if(!clean)return false;
+    if(base==='en'){if(KOKREADY){stopSpeak();speakNatural(KOKREADY,chunks(clean),o,++speakTok);return true}
+      /* downloaded before: it is only loading from the browser cache, so wait for it (not forever) rather than fall back to the robotic voice */
+      if(store.get('kokoroOk',false)){stopSpeak();const tok=++speakTok;warmNatural();withTimeout(kokoro(),45000,'Loading the natural voice').then(t=>{if(tok===speakTok)speakNatural(t,chunks(clean),o,tok)}).catch(e=>fallbackDevice(e,clean,o,tok));return true}
       warmNatural()}
-    if(!synth)return false;const v=pickVoice(base);if(!v&&base!=='en')return false;
-    const clean=tts(text);if(!clean)return false;
+    if(!synth||(!pickVoice(base)&&base!=='en'))return false;
+    stopSpeak();return speakDevice(clean,base,o,++speakTok)}
+  function speakDevice(clean,base,o,tok){if(!synth)return false;const v=pickVoice(base);if(!v&&base!=='en')return false;
     try{synth.cancel()}catch(e){}
-    const tok=++speakTok,parts=chunks(clean);let n=0,started=false;
+    const parts=chunks(clean);let n=0,started=false;
     const next=()=>{if(tok!==speakTok)return;if(n>=parts.length){if(o.onend)o.onend();return}
       const u=new SpeechSynthesisUtterance(parts[n++]);u.lang=v?v.lang:(base==='en'?'en-IN':base);if(v)u.voice=v;u.rate=prefs.rate||1;u.pitch=Math.min(2,(prefs.pitch||1.1)+((v&&isMale(v)&&!prefs.vname)?0.3:0));u.volume=1;
       u.onstart=()=>{if(!started){started=true;if(o.onstart)o.onstart()}};u.onend=next;u.onerror=()=>{if(tok===speakTok&&o.onend)o.onend()};
